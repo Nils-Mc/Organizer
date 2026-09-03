@@ -5,9 +5,12 @@ dependencies, no server, no account — open `index.html` in a browser and it
 works. Your data stays in that browser's `localStorage`, and you can export it
 to JSON at any time.
 
+**Live version:** https://nils-mc.github.io/Organizer/
+
 ## Running it
 
-Open `index.html` directly, or serve the folder if you prefer a real origin:
+Use the hosted version above, or run it yourself. Open `index.html` directly,
+or serve the folder if you prefer a real origin:
 
 ```sh
 python3 -m http.server 8000
@@ -97,3 +100,14 @@ node tests/run.js     # headless
 ```
 
 Or open `tests/test.html` in a browser for the same suite with a visual report.
+
+## Deployment
+
+`.github/workflows/pages.yml` runs the unit tests on every push and pull
+request, and publishes the repository root to GitHub Pages when `main` passes.
+There is no build step — the site *is* the repository — and a failing test
+blocks the deploy.
+
+Because every asset path is relative, the app works unchanged whether it is
+served from a domain root, from the `/Organizer/` project subpath, or straight
+off your filesystem.
