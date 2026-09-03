@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organizer — tests</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; max-width: 820px; }
+  h1 { font-size: 20px; }
+  #summary { padding: 10px 14px; border-radius: 8px; font-weight: 600; margin: 12px 0; }
+  #summary.pass { background: #e3f6e9; color: #1d6b3d; }
+  #summary.fail { background: #fdeaea; color: #97231b; }
+  ol { padding-left: 22px; }
+  li { padding: 2px 0; }
+  li.ok::marker { color: #2e9e5b; }
+  li.bad { color: #97231b; font-weight: 600; }
+  .detail { display: block; font-weight: 400; color: #666; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #16181d; color: #e7e9ec; }
+    .detail { color: #98a0ad; }
+    #summary.pass { background: #16341f; color: #7ddba0; }
+    #summary.fail { background: #3b1a17; color: #f0938a; }
+  }
+</style>
+</head>
+<body>
+<h1>Organizer — unit tests</h1>
+<div id="summary">Running…</div>
+<ol id="results"></ol>
+
+<script type="module">
+import { runTests } from './tests.js';
+
+const results = document.getElementById('results');
+const summary = document.getElementById('summary');
+let passed = 0;
+let failed = 0;
+
+runTests((name, ok, detail) => {
+  const li = document.createElement('li');
+  li.className = ok ? 'ok' : 'bad';
+  li.textContent = name;
+  if (!ok) {
+    const span = document.createElement('span');
+    span.className = 'detail';
+    span.textContent = detail;
+    li.appendChild(span);
+    failed++;
+  } else {
+    passed++;
+  }
+  results.appendChild(li);
+});
+
+summary.textContent = `${passed} passed, ${failed} failed`;
+summary.className = failed ? 'fail' : 'pass';
+document.title = `${failed ? 'FAIL' : 'PASS'} — Organizer tests`;
+</script>
+</body>
+</html>
