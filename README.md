@@ -82,19 +82,34 @@ npm install
 npm run db:init      # nur nötig, wenn du eine eigene Datenbank anlegst
 ```
 
-Zugangsdaten als Secrets — niemals in `wrangler.toml`:
+`UNTIS_HOST` und `UNTIS_SCHOOL` stehen als `vars` in `wrangler.toml` (Host und
+Schulkürzel aus der Untis-URL).
+
+### Secrets und Deploy — der einfache Weg
 
 ```sh
+npm run setup
+```
+
+Führt einmal durch: Cloudflare-Login (öffnet den Browser), die WebUntis- und
+Claude-Secrets, ein selbstgewähltes App-Login-Passwort (berechnet
+`PASSWORD_SALT`/`PASSWORD_HASH` automatisch — von Hand ist das eine leicht zu
+verwechselnde Fehlerquelle, weil ein falsches Paar einfach zu "kann mich nicht
+anmelden" ohne Fehlermeldung führt), ein zufälliges `SESSION_SECRET`, dann
+`wrangler deploy`. Jeder Wert wird direkt bei Cloudflare gespeichert — nichts
+davon landet in einer Datei oder im Terminal-Log.
+
+### Von Hand
+
+```sh
+npx wrangler login
 npx wrangler secret put UNTIS_USER
 npx wrangler secret put UNTIS_PASSWORD
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put SESSION_SECRET     # lange Zufallszeichenkette
 npx wrangler secret put PASSWORD_SALT
-npx wrangler secret put PASSWORD_HASH      # SHA-256 von "<salt>:<passwort>"
+npx wrangler secret put PASSWORD_HASH      # SHA-256 von "<salt>:<passwort>", siehe worker/src/auth.js
 ```
-
-`UNTIS_HOST` und `UNTIS_SCHOOL` stehen als `vars` in `wrangler.toml` (z.B.
-`nessa.webuntis.com` und das Schulkürzel aus der Untis-URL).
 
 ```sh
 npm run dev      # lokal, http://localhost:8787
