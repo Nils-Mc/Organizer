@@ -47,8 +47,8 @@ binding = "AI"
 crons = ["*/30 6-18 * * 1-5"]
 
 [vars]
-UNTIS_HOST = "REPLACE.webuntis.com"
-UNTIS_SCHOOL = "REPLACE"
+UNTIS_HOST = "gym-essen-werden.webuntis.com"
+UNTIS_SCHOOL = "gym-essen-werden"
 
 # Secrets are set with `wrangler secret put` and never live in this file:
 #   UNTIS_USER, UNTIS_PASSWORD, ANTHROPIC_API_KEY,
