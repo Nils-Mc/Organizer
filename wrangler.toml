@@ -51,5 +51,8 @@ UNTIS_HOST = "gym-essen-werden.webuntis.com"
 UNTIS_SCHOOL = "gym-essen-werden"
 
 # Secrets are set with `wrangler secret put` and never live in this file:
-#   UNTIS_USER, UNTIS_PASSWORD, ANTHROPIC_API_KEY,
-#   SESSION_SECRET, PASSWORD_HASH, PASSWORD_SALT
+#   UNTIS_USER, UNTIS_PASSWORD, SESSION_SECRET, PASSWORD_HASH, PASSWORD_SALT
+#
+# No API key needed for AI features — summaries and flashcards run on Workers
+# AI (env.AI, already bound above), free within the account's daily Neuron
+# allocation. See worker/src/ai.js.

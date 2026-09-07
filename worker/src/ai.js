@@ -1,39 +1,28 @@
 /**
- * AI features: transcription (Workers AI / Whisper) and summaries plus
- * flashcards (Claude).
+ * AI features: transcription, summaries and flashcards — all on Workers AI.
+ *
+ * No external API key: Workers AI is already bound as env.AI (used here for
+ * Whisper too), billed against the same free daily Neuron allocation as
+ * everything else in the account, no separate credentials to hold.
  *
  * Prompts are in German because the source material is.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+// Pure helpers live in srs.js so they stay testable without a Workers AI binding.
+// Re-exported for callers of ai.js, and imported below since `export ... from`
+// re-exports a name without binding it locally — this module uses extractJson
+// itself, so it needs its own import too.
+export { joinTranscripts, schedule, extractJson } from './srs.js';
+import { extractJson } from './srs.js';
 
-// Pure helpers live in srs.js so they stay testable without the SDK installed.
-export { joinTranscripts, schedule } from './srs.js';
-
-export const MODEL = 'claude-opus-5';
 const WHISPER = '@cf/openai/whisper-large-v3-turbo';
 
-function client(env) {
-  return new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-}
-
-/**
- * Claude Opus 5 can decline a request; the server-side fallback re-routes those
- * by category instead of handing the caller an empty response.
- */
-const FALLBACK = {
-  betas: ['server-side-fallback-2026-07-01'],
-  fallbacks: 'default',
-};
-
-/** Pull the plain text out of a response, ignoring thinking blocks. */
-function textOf(message) {
-  return (message.content || [])
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-    .trim();
-}
+// Mistral Small 3.1 24B: not on the small list of models that require Workers
+// Paid (kimi-k2.x, glm-5.2), supports the `guided_json` param flashcards rely
+// on, and is one of the stronger Workers AI models at following instructions
+// in German. Quality is a real step down from Claude — that trade was made
+// deliberately in exchange for zero API cost.
+export const MODEL = '@cf/mistralai/mistral-small-3.1-24b-instruct';
 
 /** Transcribe one audio chunk. Returns `{text, language}`. */
 export async function transcribe(env, bytes) {
@@ -60,89 +49,70 @@ Regeln:
 
 /** Summarize a transcript or pasted text. */
 export async function summarizeText(env, { text, subject, kind = 'Mitschrift' }) {
-  const message = await client(env).beta.messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    thinking: { type: 'adaptive' },
-    system: SUMMARY_SYSTEM,
-    messages: [{
-      role: 'user',
-      content: `Fach: ${subject || 'unbekannt'}\nArt: ${kind}\n\n${text}`,
-    }],
-    ...FALLBACK,
+  const result = await env.AI.run(MODEL, {
+    max_tokens: 2048,
+    messages: [
+      { role: 'system', content: SUMMARY_SYSTEM },
+      { role: 'user', content: `Fach: ${subject || 'unbekannt'}\nArt: ${kind}\n\n${text}` },
+    ],
   });
-  return { model: MODEL, body: textOf(message) };
+  return { model: MODEL, body: (result.response || '').trim() };
 }
 
 /**
- * Summarize a PDF. Claude reads PDFs natively as a document block, so there is
- * no PDF parser in this codebase and no text-extraction step to go wrong.
+ * Summarize a PDF or other uploaded document. Workers AI text models take
+ * plain text only — no native PDF reading the way Claude has — so the file
+ * first goes through Workers AI's own `toMarkdown` conversion (also handles
+ * images, HTML, docx, ...), then the extracted text is summarized like any
+ * other text.
  */
 export async function summarizeDocument(env, { base64, filename, subject, mime }) {
-  const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(filename || '');
-  const block = isPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
-    : { type: 'text', text: atob(base64) };
+  const bytes = Buffer.from(base64, 'base64');
+  const [converted] = await env.AI.toMarkdown([
+    { name: filename || 'dokument', blob: new Blob([bytes], { type: mime || 'application/octet-stream' }) },
+  ]);
 
-  const message = await client(env).beta.messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    thinking: { type: 'adaptive' },
-    system: SUMMARY_SYSTEM,
-    messages: [{
-      role: 'user',
-      content: [block, { type: 'text', text: `Fach: ${subject || 'unbekannt'}\nFasse dieses Dokument zusammen.` }],
-    }],
-    ...FALLBACK,
-  });
-  return { model: MODEL, body: textOf(message) };
+  if (!converted || converted.format === 'error') {
+    throw new Error(
+      `Dokument konnte nicht gelesen werden${converted && converted.error ? `: ${converted.error}` : '.'}`
+    );
+  }
+
+  return summarizeText(env, { text: converted.data, subject, kind: 'Dokument' });
 }
 
-const FLASHCARD_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['cards'],
-  properties: {
-    cards: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['front', 'back'],
-        properties: {
-          front: { type: 'string', description: 'Die Frage oder der Begriff' },
-          back: { type: 'string', description: 'Die Antwort, knapp und vollständig' },
-        },
-      },
-    },
-  },
-};
-
 /**
- * Generate flashcards. Uses structured outputs so the result is guaranteed to
- * parse — no regex over prose, no half-written JSON.
+ * Generate flashcards. The model is asked for a plain JSON array — the
+ * shape it naturally produces — rather than an object wrapper, since
+ * `guided_json` does not hold in chat mode (see extractJson in srs.js).
+ * Every card is validated before being returned; a card missing a usable
+ * front or back is dropped rather than shown as an empty tile in the UI.
  */
 export async function generateFlashcards(env, { text, subject, count = 12 }) {
-  const message = await client(env).beta.messages.create({
-    model: MODEL,
-    max_tokens: 8192,
-    thinking: { type: 'adaptive' },
-    system: `Du erstellst Lernkarten aus Unterrichtsmaterial. Deutsch, präzise, eine Sache pro Karte.
-Keine Ja/Nein-Fragen. Die Rückseite muss ohne die Vorderseite verständlich sein.`,
-    messages: [{
-      role: 'user',
-      content: `Fach: ${subject || 'unbekannt'}\nErstelle höchstens ${count} Lernkarten aus:\n\n${text}`,
-    }],
-    output_config: {
-      format: { type: 'json_schema', schema: FLASHCARD_SCHEMA },
-    },
-    ...FALLBACK,
+  const result = await env.AI.run(MODEL, {
+    max_tokens: 4096,
+    messages: [
+      {
+        role: 'system',
+        content: `Du erstellst Lernkarten aus Unterrichtsmaterial. Deutsch, präzise, eine Sache pro Karte.
+Keine Ja/Nein-Fragen. Die Rückseite muss ohne die Vorderseite verständlich sein.
+Antworte ausschließlich mit einem JSON-Array aus Objekten der Form {"front": "...", "back": "..."} — kein Fließtext, kein Objekt-Wrapper.`,
+      },
+      { role: 'user', content: `Fach: ${subject || 'unbekannt'}\nErstelle höchstens ${count} Lernkarten aus:\n\n${text}` },
+    ],
   });
 
   try {
-    const parsed = JSON.parse(textOf(message));
-    return Array.isArray(parsed.cards) ? parsed.cards : [];
-  } catch {
+    const parsed = extractJson(result.response || '');
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.cards) ? parsed.cards : [];
+    return list
+      .filter((c) => c && typeof c.front === 'string' && typeof c.back === 'string' && c.front.trim() && c.back.trim())
+      .slice(0, count);
+  } catch (error) {
+    // A parse failure degrades to an empty list for the UI, but must not
+    // vanish silently — this is the only signal that the model drifted to a
+    // shape extractJson doesn't yet handle.
+    console.error('generateFlashcards: could not parse model output', error, result.response);
     return [];
   }
 }

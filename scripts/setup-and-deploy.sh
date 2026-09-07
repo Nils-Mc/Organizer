@@ -24,11 +24,10 @@ else
 fi
 
 echo
-echo "== 2/4  WebUntis and Anthropic secrets =="
+echo "== 2/4  WebUntis secrets =="
 echo "(Each prompt is wrangler's own, masked where it matters. Nothing here touches this script.)"
 npx wrangler secret put UNTIS_USER
 npx wrangler secret put UNTIS_PASSWORD
-npx wrangler secret put ANTHROPIC_API_KEY
 
 echo
 echo "== 3/4  App login =="

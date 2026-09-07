@@ -2,7 +2,7 @@
  * Worker entry point: static assets, JSON API, scheduled sync, transcription queue.
  *
  * Every /api route except /api/login requires a session. Anything that reaches
- * WebUntis or Claude runs here, never in the browser.
+ * WebUntis or Workers AI runs here, never in the browser.
  */
 
 import { createDb } from './db.js';
@@ -226,12 +226,16 @@ async function handleApi(request, env, ctx, url) {
         }
         const object = await env.BUCKET.get(material.r2_key);
         const buffer = await object.arrayBuffer();
-        result = await ai.summarizeDocument(env, {
-          base64: base64FromBuffer(buffer),
-          filename: material.filename,
-          mime: material.mime,
-          subject: body.subject,
-        });
+        try {
+          result = await ai.summarizeDocument(env, {
+            base64: base64FromBuffer(buffer),
+            filename: material.filename,
+            mime: material.mime,
+            subject: body.subject,
+          });
+        } catch (error) {
+          return json({ error: String(error.message || error) }, { status: 502 });
+        }
       }
     } else if (body.text) {
       result = await ai.summarizeText(env, { text: body.text, subject: body.subject });

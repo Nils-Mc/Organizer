@@ -1,8 +1,8 @@
 /**
  * Pure helpers that sit next to the AI features but must not depend on them.
  *
- * Kept out of ai.js on purpose: that module imports the Anthropic SDK, and this
- * logic deserves to be testable without installing or stubbing it.
+ * Kept out of ai.js on purpose: that module calls out to Workers AI, and this
+ * logic deserves to be testable without a binding to stub.
  */
 
 /**
@@ -15,6 +15,22 @@ export function joinTranscripts(chunks) {
     .map((c) => String((c && c.text) || '').trim())
     .filter(Boolean)
     .join('\n\n');
+}
+
+/**
+ * Pull a JSON value out of a chat model's response. Two things verified
+ * empirically against @cf/mistralai/mistral-small-3.1-24b-instruct, neither
+ * documented: `guided_json` is silently ignored once `messages` is set (a
+ * bare array back, not the schema-shaped object asked for), and depending on
+ * that same request shape `response` sometimes arrives already parsed into
+ * an object/array by the binding, and sometimes as a string — occasionally
+ * fenced in ```json. Trust none of that as fixed behaviour; handle all of it.
+ */
+export function extractJson(value) {
+  if (value && typeof value === 'object') return value; // already parsed for us
+  const fenced = String(value || '').match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1] : value;
+  return JSON.parse(String(candidate).trim());
 }
 
 /**

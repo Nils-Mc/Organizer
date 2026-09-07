@@ -1,5 +1,5 @@
-/** Tests for transcript stitching and SM-2 scheduling. */
-import { joinTranscripts, schedule } from '../worker/src/srs.js';
+/** Tests for transcript stitching, SM-2 scheduling and JSON extraction. */
+import { joinTranscripts, schedule, extractJson } from '../worker/src/srs.js';
 
 const NOW = new Date(2026, 8, 7); // 2026-09-07, local
 
@@ -79,5 +79,37 @@ export function runSrsTests(report) {
     eq(schedule({ interval_days: 9, repetitions: 3, ease: 2.5 }, -5, NOW).interval_days, 1,
       'an out-of-range quality is clamped low and counts as a lapse');
     eq(schedule({}, undefined, NOW).lapses, 1, 'a missing quality is treated as a failure');
+  }
+
+  // ---- extractJson ------------------------------------------------------------
+  // Workers AI's guided_json is silently ignored once `messages` is set, so the
+  // model's actual output — a bare array, sometimes fenced, sometimes not — is
+  // what this has to handle, not the schema-shaped object the docs promise.
+  {
+    eq(extractJson('[{"front":"a","back":"b"}]'), [{ front: 'a', back: 'b' }],
+      'a bare JSON array parses directly');
+    eq(extractJson('```json\n[{"front":"a","back":"b"}]\n```'), [{ front: 'a', back: 'b' }],
+      'a ```json fence around an array is stripped');
+    eq(extractJson('```\n[{"front":"a","back":"b"}]\n```'), [{ front: 'a', back: 'b' }],
+      'a bare ``` fence with no language tag is stripped too');
+    eq(extractJson('  \n [1,2,3] \n  '), [1, 2, 3], 'surrounding whitespace is trimmed');
+    eq(extractJson('{"cards":[{"front":"a","back":"b"}]}'), { cards: [{ front: 'a', back: 'b' }] },
+      'an object-wrapped shape still parses, in case the model does honour guided_json');
+
+    // Empirically, the binding sometimes hands back an already-parsed value
+    // instead of a string — passing that through String() first would stringify
+    // it as "[object Object]" and break parsing, so identity has to win first.
+    const already = [{ front: 'a', back: 'b' }];
+    eq(extractJson(already), already, 'an already-parsed array is returned as-is, not re-stringified');
+    const alreadyObj = { cards: [{ front: 'a', back: 'b' }] };
+    eq(extractJson(alreadyObj), alreadyObj, 'an already-parsed object is returned as-is too');
+
+    let threw = null;
+    try { extractJson('not json at all'); } catch (e) { threw = e; }
+    ok(threw, 'unparsable text throws rather than returning a bogus value');
+
+    threw = null;
+    try { extractJson(''); } catch (e) { threw = e; }
+    ok(threw, 'empty input throws rather than returning a bogus value');
   }
 }

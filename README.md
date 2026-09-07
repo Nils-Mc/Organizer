@@ -17,8 +17,7 @@ Gründen:
 
 1. **WebUntis sendet keine CORS-Header.** Ein `fetch` aus dem Browser wird
    blockiert — auch der offizielle JS-Client zielt ausdrücklich auf Node.
-2. **API-Schlüssel gehören nicht ins Frontend.** Ein ausgelieferter Claude-Key
-   ist ein öffentlicher Key.
+2. **WebUntis-Zugangsdaten gehören nicht ins Frontend.**
 
 Beides landet deshalb im Worker.
 
@@ -37,7 +36,7 @@ worker/
   src/untis.js        WebUntis JSON-RPC + REST (fetch injizierbar)
   src/sync.js         Reconciliation (rein, ohne DB)
   src/db.js           D1-Adapter
-  src/ai.js           Claude + Whisper
+  src/ai.js           Workers AI: Whisper + Textmodell (kostenlos, kein API-Key)
   src/srs.js          SM-2 und Transkript-Zusammenführung (rein)
 tests/                Unit-Tests, headless und im Browser
 ```
@@ -55,8 +54,8 @@ ohne Cloudflare testbar. `db.js` und `index.js` sind bewusst dumm.
 - **Transkription** von Aufnahmen über Workers AI (Whisper). Lange Aufnahmen
   werden in Stücke geteilt, parallel transkribiert und nach Index wieder
   zusammengesetzt.
-- **Zusammenfassungen** über Claude. PDFs gehen direkt an das Modell — kein
-  eigener PDF-Parser, also auch keine kaputte Textextraktion.
+- **Zusammenfassungen** über Workers AI (Mistral Small 3.1). PDFs und andere
+  Dokumente laufen zuerst durch Workers AI's eigene `toMarkdown`-Konvertierung.
 - **Lernkarten** mit SM-2-Wiederholung, per Structured Outputs erzeugt.
 - **Suche** über Notizen, Transkripte und Zusammenfassungen (FTS5).
 - Der bestehende Aufgaben-Teil bleibt: Today/Upcoming, Prioritäten, `#tags`,
@@ -94,13 +93,14 @@ Schulkürzel aus der Untis-URL).
 npm run setup
 ```
 
-Führt einmal durch: Cloudflare-Login (öffnet den Browser), die WebUntis- und
-Claude-Secrets, ein selbstgewähltes App-Login-Passwort (berechnet
-`PASSWORD_SALT`/`PASSWORD_HASH` automatisch — von Hand ist das eine leicht zu
-verwechselnde Fehlerquelle, weil ein falsches Paar einfach zu "kann mich nicht
-anmelden" ohne Fehlermeldung führt), ein zufälliges `SESSION_SECRET`, dann
-`wrangler deploy`. Jeder Wert wird direkt bei Cloudflare gespeichert — nichts
-davon landet in einer Datei oder im Terminal-Log.
+Führt einmal durch: Cloudflare-Login (öffnet den Browser), die WebUntis-Secrets,
+ein selbstgewähltes App-Login-Passwort (berechnet `PASSWORD_SALT`/`PASSWORD_HASH`
+automatisch — von Hand ist das eine leicht zu verwechselnde Fehlerquelle, weil
+ein falsches Paar einfach zu "kann mich nicht anmelden" ohne Fehlermeldung
+führt), ein zufälliges `SESSION_SECRET`, dann `wrangler deploy`. Kein API-Key
+für die KI-Features nötig — die laufen auf Workers AI, das ist schon über den
+`AI`-Binding vorhanden. Jeder Wert wird direkt bei Cloudflare gespeichert —
+nichts davon landet in einer Datei oder im Terminal-Log.
 
 ### Von Hand
 
@@ -108,7 +108,6 @@ davon landet in einer Datei oder im Terminal-Log.
 npx wrangler login
 npx wrangler secret put UNTIS_USER
 npx wrangler secret put UNTIS_PASSWORD
-npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put SESSION_SECRET     # lange Zufallszeichenkette
 npx wrangler secret put PASSWORD_SALT
 npx wrangler secret put PASSWORD_HASH      # SHA-256 von "<salt>:<passwort>", siehe worker/src/auth.js
@@ -123,10 +122,12 @@ Für den Deploy aus GitHub Actions: `CLOUDFLARE_API_TOKEN` und
 `CLOUDFLARE_ACCOUNT_ID` als Repository-Secrets. Fehlen sie, überspringt der
 Workflow den Deploy mit einem Hinweis, statt rot zu werden.
 
-**Kosten:** Queues und Vectorize gibt es nicht im Free-Tier, und das CPU-Limit
-dort ist für Sync- und KI-Läufe knapp. Für den vollen Funktionsumfang ist der
-Workers-Paid-Plan (~5 $/Monat) nötig; dazu die Claude-Nutzung (Opus 5:
-5 $ / 25 $ pro Mio. Token).
+**Kosten:** Sync, Fächer, Notizen, Zusammenfassungen, Lernkarten und
+Transkription laufen komplett im kostenlosen Workers-Kontingent (10.000
+Neuronen/Tag auf Workers AI, reicht für gut hundert Zusammenfassungen täglich).
+Nur Queues (für die Hintergrund-Transkription vieler Audiostücke) und Vectorize
+(semantische Suche) brauchen den Workers-Paid-Plan (~5 $/Monat) — beide sind
+aktuell auskommentiert und optional, siehe oben.
 
 ## Tests
 
