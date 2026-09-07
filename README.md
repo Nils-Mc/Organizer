@@ -1,113 +1,124 @@
 # Organizer
 
-A small, offline-first task and project organizer. No build step, no
-dependencies, no server, no account — open `index.html` in a browser and it
-works. Your data stays in that browser's `localStorage`, and you can export it
-to JSON at any time.
+Ein Schul-Organizer: WebUntis synchronisiert sich automatisch, und unter jedem
+Fach lassen sich Notizen, Audio-Aufnahmen und Dokumente ablegen — mit
+KI-Zusammenfassungen, Lernkarten und Suche über alles.
 
-**Live version:** https://nils-mc.github.io/Organizer/
+Läuft als Cloudflare Worker. Das Frontend bleibt abhängigkeitsfreies HTML, CSS
+und ES-Module; der Worker hält alles, was Zugangsdaten braucht.
 
-## Running it
+## Warum ein Server nötig ist
 
-Use the hosted version above, or run it yourself. Open `index.html` directly,
-or serve the folder if you prefer a real origin:
+Die erste Fassung war eine reine Browser-App. Das geht hier nicht mehr, aus zwei
+Gründen:
 
-```sh
-python3 -m http.server 8000
-# then visit http://localhost:8000
+1. **WebUntis sendet keine CORS-Header.** Ein `fetch` aus dem Browser wird
+   blockiert — auch der offizielle JS-Client zielt ausdrücklich auf Node.
+2. **API-Schlüssel gehören nicht ins Frontend.** Ein ausgelieferter Claude-Key
+   ist ein öffentlicher Key.
+
+Beides landet deshalb im Worker.
+
+## Aufbau
+
+```
+web/                  Frontend (unverändert abhängigkeitsfrei)
+  index.html
+  css/styles.css
+  js/{store,filters,ui,app}.js
+worker/
+  schema.sql          D1-Schema
+  src/index.js        Router, Cron-Sync, Transkriptions-Queue
+  src/auth.js         Single-User-Login, signiertes Cookie
+  src/untis.js        WebUntis JSON-RPC + REST (fetch injizierbar)
+  src/sync.js         Reconciliation (rein, ohne DB)
+  src/db.js           D1-Adapter
+  src/ai.js           Claude + Whisper
+  src/srs.js          SM-2 und Transkript-Zusammenführung (rein)
+tests/                Unit-Tests, headless und im Browser
 ```
 
-A static host works too — the whole app is just HTML, CSS and ES modules.
+Der Zuschnitt folgt einer Regel: **Entscheidungen sind rein, Seiteneffekte sind
+dünn.** `sync.js`, `srs.js` und die Normalisierung in `untis.js` enthalten die
+eigentliche Logik und kennen weder Datenbank noch Netzwerk — deshalb sind sie
+ohne Cloudflare testbar. `db.js` und `index.js` sind bewusst dumm.
 
 ## Features
 
-- **Tasks** with a due date, a low/normal/high priority, and `#tags` typed
-  straight into the title (`Send the report #finance`).
-- **Projects** with colour coding; anything unassigned lives in the Inbox.
-  Deleting a project returns its tasks to the Inbox rather than destroying them.
-- **Views**: Today (due today *and* overdue), Upcoming, All open, Inbox,
-  Completed, plus one view per project.
-- **Grouping** by Overdue / Today / Tomorrow / This week / Later / No due date.
-- **Search** across titles, notes and tags; sort by due date, priority, newest
-  or title.
-- **Undo** after deleting a task (8-second window).
-- **Import / export** JSON, either replacing your data or merging into it.
-- **Light and dark** themes, following the system setting with a manual override.
+- **WebUntis-Sync** alle 30 Minuten während der Schulzeit: Fächer, Stundenplan,
+  Hausaufgaben, Klausuren. Entfall und Vertretung werden erkannt und markiert.
+- **Pro Fach**: Notizen (Markdown), Audio-Aufnahmen, Dokumente.
+- **Transkription** von Aufnahmen über Workers AI (Whisper). Lange Aufnahmen
+  werden in Stücke geteilt, parallel transkribiert und nach Index wieder
+  zusammengesetzt.
+- **Zusammenfassungen** über Claude. PDFs gehen direkt an das Modell — kein
+  eigener PDF-Parser, also auch keine kaputte Textextraktion.
+- **Lernkarten** mit SM-2-Wiederholung, per Structured Outputs erzeugt.
+- **Suche** über Notizen, Transkripte und Zusammenfassungen (FTS5).
+- Der bestehende Aufgaben-Teil bleibt: Today/Upcoming, Prioritäten, `#tags`,
+  Undo, Hell/Dunkel, Offline-Betrieb.
 
-### Keyboard
+### Was ein Sync nie anfasst
 
-| Key | Action |
-|---|---|
-| `n` | Focus the new-task field |
-| `/` | Focus search |
-| `Enter` | Submit the new task, or save an inline edit |
-| `Esc` | Cancel an edit, or clear the search box |
+Alles aus Untis trägt seine `untis_id` und wird per Upsert abgeglichen. Ein
+zweiter Sync ändert deshalb nichts. Vor allem: **eine lokal abgehakte Hausaufgabe
+bleibt abgehakt**, auch wenn Untis sie weiter als offen meldet. Notizen,
+Aufnahmen und Zusammenfassungen haben keine Untis-Id und werden nie überschrieben.
 
-Click a task's title to edit it in place.
+## Einrichtung
 
-## Data format
-
-Everything is one versioned object under the `organizer.v1` key — the same
-shape the export produces, so an exported file can be edited by hand and
-imported back:
-
-```json
-{
-  "version": 1,
-  "projects": [
-    { "id": "…", "name": "Work", "color": "#3b6ef5", "createdAt": "…" }
-  ],
-  "tasks": [
-    {
-      "id": "…",
-      "title": "Send the quarterly report",
-      "notes": "",
-      "projectId": "…",
-      "done": false,
-      "dueDate": "2026-09-10",
-      "priority": "high",
-      "tags": ["finance"],
-      "createdAt": "…", "updatedAt": "…", "completedAt": null
-    }
-  ]
-}
+```sh
+npm install
+npx wrangler d1 create organizer          # ID in wrangler.toml eintragen
+npx wrangler r2 bucket create organizer-media
+npx wrangler queues create organizer-transcribe
+npm run db:init                            # Schema lokal anlegen
 ```
 
-`projectId` is `null` for Inbox tasks, and `dueDate` is a local `YYYY-MM-DD`
-calendar day (not a timestamp — "due today" should not depend on your time
-zone). Imported data is validated field by field: malformed records are
-dropped rather than trusted, so a corrupt file can't break the app.
+Zugangsdaten als Secrets — niemals in `wrangler.toml`:
 
-## Layout
-
-```
-index.html      markup shell
-css/styles.css  design tokens, light/dark, responsive layout
-js/store.js     persistence, CRUD, import/export      (no DOM)
-js/filters.js   filtering, sorting, date bucketing    (no DOM, pure)
-js/ui.js        rendering and event wiring
-js/app.js       entry point
-tests/          unit tests for store.js and filters.js
+```sh
+npx wrangler secret put UNTIS_USER
+npx wrangler secret put UNTIS_PASSWORD
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put SESSION_SECRET     # lange Zufallszeichenkette
+npx wrangler secret put PASSWORD_SALT
+npx wrangler secret put PASSWORD_HASH      # SHA-256 von "<salt>:<passwort>"
 ```
 
-`store.js` and `filters.js` avoid the DOM deliberately, which is what lets the
-test suite run headlessly.
+`UNTIS_HOST` und `UNTIS_SCHOOL` stehen als `vars` in `wrangler.toml` (z.B.
+`nessa.webuntis.com` und das Schulkürzel aus der Untis-URL).
+
+```sh
+npm run dev      # lokal, http://localhost:8787
+npm run deploy   # veröffentlichen
+```
+
+Für den Deploy aus GitHub Actions: `CLOUDFLARE_API_TOKEN` und
+`CLOUDFLARE_ACCOUNT_ID` als Repository-Secrets. Fehlen sie, überspringt der
+Workflow den Deploy mit einem Hinweis, statt rot zu werden.
+
+**Kosten:** Queues und Vectorize gibt es nicht im Free-Tier, und das CPU-Limit
+dort ist für Sync- und KI-Läufe knapp. Für den vollen Funktionsumfang ist der
+Workers-Paid-Plan (~5 $/Monat) nötig; dazu die Claude-Nutzung (Opus 5:
+5 $ / 25 $ pro Mio. Token).
 
 ## Tests
 
 ```sh
-node tests/run.js     # headless
+npm test          # oder: node tests/run.js
 ```
 
-Or open `tests/test.html` in a browser for the same suite with a visual report.
+Oder `tests/test.html` im Browser für denselben Umfang mit sichtbarem Bericht.
 
-## Deployment
+Abgedeckt sind unter anderem: WebUntis-Datums- und Zeitkodierung (`830` = 08:30),
+Session- und Cookie-Handling gegen einen Fetch-Stub, Erkennung von Entfall und
+Vertretung, Idempotenz des Syncs, das Überleben lokaler Änderungen, Ablauf und
+Fälschung von Session-Tokens, SM-2-Intervalle samt Ease-Untergrenze und die
+Zusammenführung von Transkript-Stücken.
 
-`.github/workflows/pages.yml` runs the unit tests on every push and pull
-request, and publishes the repository root to GitHub Pages when `main` passes.
-There is no build step — the site *is* the repository — and a failing test
-blocks the deploy.
+## Datenformat
 
-Because every asset path is relative, the app works unchanged whether it is
-served from a domain root, from the `/Organizer/` project subpath, or straight
-off your filesystem.
+Der Aufgaben-Teil im Browser nutzt weiterhin `organizer.v1` in `localStorage`
+und lässt sich als JSON exportieren und importieren. Importe werden feldweise
+validiert; defekte Datensätze werden verworfen statt übernommen.

@@ -4,11 +4,11 @@
  * Runs both in the browser (tests/test.html) and headlessly under Node
  * (`node tests/run.js`) — `report` is supplied by whichever runner loaded us.
  */
-import { Store, parseTags, normalizeState, STORAGE_KEY } from '../js/store.js';
+import { Store, parseTags, normalizeState, STORAGE_KEY } from '../web/js/store.js';
 import {
   toISODate, daysUntil, dueBucket, filterByView, sortTasks,
   groupByDue, matchesSearch, countsFor, formatDue,
-} from '../js/filters.js';
+} from '../web/js/filters.js';
 
 /** Minimal in-memory stand-in for the Storage interface. */
 class MemoryStorage {

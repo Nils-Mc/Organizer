@@ -1,0 +1,43 @@
+name = "organizer"
+main = "worker/src/index.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The built app is served straight from web/ — there is no build step.
+[assets]
+directory = "web"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "organizer"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "organizer-media"
+
+[ai]
+binding = "AI"
+
+[[queues.producers]]
+binding = "TRANSCRIBE_QUEUE"
+queue = "organizer-transcribe"
+
+[[queues.consumers]]
+queue = "organizer-transcribe"
+max_batch_size = 1
+max_retries = 3
+
+# Every 30 minutes on weekdays between 06:00 and 18:00 UTC. Outside school hours
+# there is nothing to pick up, and Untis should not be polled for nothing.
+[triggers]
+crons = ["*/30 6-18 * * 1-5"]
+
+[vars]
+UNTIS_HOST = "REPLACE.webuntis.com"
+UNTIS_SCHOOL = "REPLACE"
+
+# Secrets are set with `wrangler secret put` and never live in this file:
+#   UNTIS_USER, UNTIS_PASSWORD, ANTHROPIC_API_KEY,
+#   SESSION_SECRET, PASSWORD_HASH, PASSWORD_SALT

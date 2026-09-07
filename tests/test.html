@@ -30,13 +30,17 @@
 
 <script type="module">
 import { runTests } from './tests.js';
+import { runUntisTests } from './untis.tests.js';
+import { runSyncTests } from './sync.tests.js';
+import { runAuthTests } from './auth.tests.js';
+import { runSrsTests } from './srs.tests.js';
 
 const results = document.getElementById('results');
 const summary = document.getElementById('summary');
 let passed = 0;
 let failed = 0;
 
-runTests((name, ok, detail) => {
+const report = (name, ok, detail) => {
   const li = document.createElement('li');
   li.className = ok ? 'ok' : 'bad';
   li.textContent = name;
@@ -50,7 +54,13 @@ runTests((name, ok, detail) => {
     passed++;
   }
   results.appendChild(li);
-});
+};
+
+runTests(report);
+await runUntisTests(report);
+await runSyncTests(report);
+await runAuthTests(report);
+runSrsTests(report);
 
 summary.textContent = `${passed} passed, ${failed} failed`;
 summary.className = failed ? 'fail' : 'pass';

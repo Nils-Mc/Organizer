@@ -78,6 +78,17 @@ export class UI {
       d.title.value = '';
       d.due.value = '';
       d.title.focus();
+
+      // A task with no due date added from "Today" would otherwise be filed
+      // correctly and then vanish, which reads as if nothing happened. Fall
+      // back to a view that actually contains it.
+      // The store's own subscriber has already re-rendered by now, so switching
+      // the view here needs its own render to take effect.
+      const view = this.resolveView();
+      if (!filterByView([task], view, this.today).length) {
+        this.prefs.set('view', 'all');
+        this.render();
+      }
       this.announce(`Added ${task.title}`);
     });
 
