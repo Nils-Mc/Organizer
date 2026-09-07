@@ -3,6 +3,7 @@
  */
 import { Store } from './store.js';
 import { UI } from './ui.js';
+import { School } from './school.js';
 
 const PREFS_KEY = 'organizer.prefs.v1';
 
@@ -45,5 +46,13 @@ window.addEventListener('storage', (event) => {
   }
 });
 
+/**
+ * The school panel is additive: it probes for a Worker backend and stays hidden
+ * when there is none, so opening index.html straight from disk still gives the
+ * original offline task app.
+ */
+const school = new School(document.getElementById('school-panel'), (msg) => ui.announce(msg));
+school.init().catch(() => { /* no backend — the task app is unaffected */ });
+
 // Exposed for the end-to-end tests and for poking around in the console.
-window.organizer = { store, ui, prefs };
+window.organizer = { store, ui, prefs, school };

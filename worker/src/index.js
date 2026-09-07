@@ -160,6 +160,14 @@ async function handleApi(request, env, ctx, url) {
     return json({ materials: await db.materialsForSubject(subjectMaterials[1]) });
   }
   if (subjectMaterials && method === 'POST') {
+    // R2 is optional: without it the rest of the app still works, so say what
+    // is missing rather than failing on an undefined binding.
+    if (!env.BUCKET) {
+      return json({
+        error: 'Uploads sind nicht aktiv: R2 ist für diesen Account noch nicht ' +
+               'freigeschaltet. Siehe die Anleitung in wrangler.toml.',
+      }, { status: 503 });
+    }
     const subjectId = subjectMaterials[1];
     const form = await request.formData();
     const file = form.get('file');
@@ -213,6 +221,9 @@ async function handleApi(request, env, ctx, url) {
         if (!transcript) return json({ error: 'Noch keine Transkription.' }, { status: 409 });
         result = await ai.summarizeText(env, { text: transcript.text, subject: body.subject });
       } else {
+        if (!env.BUCKET) {
+          return json({ error: 'Dokumente sind nicht verfügbar: R2 ist nicht aktiv.' }, { status: 503 });
+        }
         const object = await env.BUCKET.get(material.r2_key);
         const buffer = await object.arrayBuffer();
         result = await ai.summarizeDocument(env, {

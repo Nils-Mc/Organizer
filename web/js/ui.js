@@ -8,11 +8,11 @@ import {
 } from './filters.js';
 
 const VIEWS = [
-  { id: 'today', label: 'Today', icon: '☀' },
-  { id: 'upcoming', label: 'Upcoming', icon: '▸' },
-  { id: 'all', label: 'All open', icon: '≡' },
-  { id: 'inbox', label: 'Inbox', icon: '✉' },
-  { id: 'completed', label: 'Completed', icon: '✓' },
+  { id: 'today', label: 'Heute', icon: '☀' },
+  { id: 'upcoming', label: 'Demnächst', icon: '▸' },
+  { id: 'all', label: 'Alle offenen', icon: '≡' },
+  { id: 'inbox', label: 'Eingang', icon: '✉' },
+  { id: 'completed', label: 'Erledigt', icon: '✓' },
 ];
 
 const el = (id) => document.getElementById(id);
@@ -89,7 +89,7 @@ export class UI {
         this.prefs.set('view', 'all');
         this.render();
       }
-      this.announce(`Added ${task.title}`);
+      this.announce(`${task.title} hinzugefügt`);
     });
 
     d.search.addEventListener('input', () => this.render());
@@ -108,7 +108,7 @@ export class UI {
     });
 
     el('add-project').addEventListener('click', () => {
-      const name = prompt('Project name');
+      const name = prompt('Name des Projekts');
       if (!name) return;
       const project = this.store.addProject(name);
       if (project) {
@@ -173,7 +173,7 @@ export class UI {
     const rename = event.target.closest('[data-rename]');
     if (rename) {
       const project = this.store.getProject(rename.dataset.rename);
-      const name = prompt('Rename project', project ? project.name : '');
+      const name = prompt('Projekt umbenennen', project ? project.name : '');
       if (name) this.store.renameProject(rename.dataset.rename, name);
       return;
     }
@@ -182,7 +182,7 @@ export class UI {
     if (remove) {
       const id = remove.dataset.deleteProject;
       const project = this.store.getProject(id);
-      if (project && confirm(`Delete "${project.name}"? Its tasks move to the Inbox.`)) {
+      if (project && confirm(`"${project.name}" löschen? Die Aufgaben wandern in den Eingang.`)) {
         this.store.deleteProject(id);
         if (this.prefs.get('view') === `project:${id}`) this.prefs.set('view', 'all');
         this.render();
@@ -199,8 +199,8 @@ export class UI {
       const removed = this.store.deleteTask(id);
       if (removed) {
         this.undo = removed;
-        this.showToast(`Deleted "${removed.task.title}"`);
-        this.announce(`Deleted ${removed.task.title}`);
+        this.showToast(`"${removed.task.title}" gelöscht`);
+        this.announce(`${removed.task.title} gelöscht`);
       }
       return;
     }
@@ -216,7 +216,7 @@ export class UI {
 
     if (event.target.matches('input[type="checkbox"]')) {
       const task = this.store.toggleTask(id);
-      if (task) this.announce(`${task.title} ${task.done ? 'completed' : 'reopened'}`);
+      if (task) this.announce(`${task.title} ${task.done ? 'erledigt' : 'wieder offen'}`);
     }
   }
 
@@ -252,7 +252,7 @@ export class UI {
   performUndo() {
     if (this.undo) {
       this.store.restoreTask(this.undo.task, this.undo.index);
-      this.announce(`Restored ${this.undo.task.title}`);
+      this.announce(`${this.undo.task.title} wiederhergestellt`);
     }
     this.hideToast();
   }
@@ -268,7 +268,7 @@ export class UI {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    this.announce('Exported data');
+    this.announce('Daten exportiert');
   }
 
   async importData(event) {
@@ -278,13 +278,13 @@ export class UI {
     try {
       const text = await file.text();
       const merge = confirm(
-        'OK: merge into your current data.\nCancel: replace everything with the file.'
+        'OK: in die vorhandenen Daten einfügen.\nAbbrechen: alles durch die Datei ersetzen.'
       );
       const result = this.store.importJSON(text, merge ? 'merge' : 'replace');
-      this.announce(`Imported ${result.tasks} tasks and ${result.projects} projects`);
+      this.announce(`${result.tasks} Aufgaben und ${result.projects} Projekte importiert`);
       this.render();
     } catch {
-      alert('That file could not be read as Organizer JSON.');
+      alert('Die Datei konnte nicht als Organizer-JSON gelesen werden.');
     }
   }
 
@@ -320,16 +320,16 @@ export class UI {
   viewLabel(view) {
     if (view.startsWith('project:')) {
       const project = this.store.getProject(view.slice(8));
-      return project ? project.name : 'Project';
+      return project ? project.name : 'Projekt';
     }
     const known = VIEWS.find((v) => v.id === view);
-    return known ? known.label : 'Tasks';
+    return known ? known.label : 'Aufgaben';
   }
 
   summaryText(count, query, counts) {
-    const noun = count === 1 ? 'task' : 'tasks';
-    if (query.trim()) return `${count} ${noun} matching “${query.trim()}”`;
-    return `${count} ${noun} · ${counts.all} open overall · ${counts.completed} completed`;
+    const noun = count === 1 ? 'Aufgabe' : 'Aufgaben';
+    if (query.trim()) return `${count} ${noun} zu „${query.trim()}“`;
+    return `${count} ${noun} · ${counts.all} offen gesamt · ${counts.completed} erledigt`;
   }
 
   renderSidebar(activeView, counts) {
@@ -363,7 +363,7 @@ export class UI {
       const li = document.createElement('li');
       li.className = 'count';
       li.style.padding = '4px 8px';
-      li.textContent = 'No projects yet';
+      li.textContent = 'Noch keine Projekte';
       projects.appendChild(li);
     }
     for (const project of this.store.getProjects()) {
@@ -390,9 +390,9 @@ export class UI {
       const actions = document.createElement('span');
       actions.className = 'row-actions';
       const rename = this.button('icon-btn', '✎', { rename: project.id });
-      rename.setAttribute('aria-label', `Rename ${project.name}`);
+      rename.setAttribute('aria-label', `${project.name} umbenennen`);
       const del = this.button('icon-btn', '✕', { deleteProject: project.id });
-      del.setAttribute('aria-label', `Delete ${project.name}`);
+      del.setAttribute('aria-label', `${project.name} löschen`);
       actions.append(rename, del);
 
       li.append(btn, actions);
@@ -408,7 +408,7 @@ export class UI {
 
     const inbox = document.createElement('option');
     inbox.value = '';
-    inbox.textContent = 'Inbox';
+    inbox.textContent = 'Eingang';
     select.appendChild(inbox);
 
     for (const project of this.store.getProjects()) {
@@ -431,8 +431,8 @@ export class UI {
       const empty = document.createElement('p');
       empty.className = 'empty';
       empty.textContent = this.dom.search.value.trim()
-        ? 'No tasks match your search.'
-        : 'Nothing here. Add a task above to get started.';
+        ? 'Keine Aufgabe passt zur Suche.'
+        : 'Nichts da. Lege oben eine Aufgabe an.';
       container.appendChild(empty);
       return;
     }
@@ -465,7 +465,7 @@ export class UI {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.done;
-    checkbox.setAttribute('aria-label', `Mark "${task.title}" ${task.done ? 'not done' : 'done'}`);
+    checkbox.setAttribute('aria-label', `"${task.title}" als ${task.done ? 'offen' : 'erledigt'} markieren`);
 
     const body = document.createElement('div');
     body.className = 'task-body';
@@ -475,7 +475,7 @@ export class UI {
       input.className = 'edit-input';
       input.type = 'text';
       input.value = task.title;
-      input.setAttribute('aria-label', 'Edit task title');
+      input.setAttribute('aria-label', 'Aufgabentitel bearbeiten');
       input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
@@ -490,7 +490,7 @@ export class UI {
       const title = document.createElement('span');
       title.className = 'task-title';
       title.textContent = task.title;
-      title.title = 'Click to edit';
+      title.title = 'Zum Bearbeiten klicken';
       body.appendChild(title);
     }
 
@@ -520,7 +520,7 @@ export class UI {
 
     if (task.priority !== 'normal') {
       const prio = document.createElement('span');
-      prio.textContent = `${task.priority} priority`;
+      prio.textContent = { high: 'hohe Priorität', low: 'niedrige Priorität' }[task.priority] || '';
       meta.appendChild(prio);
     }
 
@@ -536,9 +536,9 @@ export class UI {
     const actions = document.createElement('div');
     actions.className = 'task-actions';
     const edit = this.button('icon-btn', '✎', { action: 'edit' });
-    edit.setAttribute('aria-label', `Edit "${task.title}"`);
+    edit.setAttribute('aria-label', `"${task.title}" bearbeiten`);
     const del = this.button('icon-btn', '✕', { action: 'delete' });
-    del.setAttribute('aria-label', `Delete "${task.title}"`);
+    del.setAttribute('aria-label', `"${task.title}" löschen`);
     actions.append(edit, del);
 
     li.append(checkbox, body, actions);

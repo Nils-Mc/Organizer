@@ -165,9 +165,12 @@ export function runTests(report) {
     eq(bucket(8), 'later', 'in eight days -> later');
     eq(daysUntil(offsetDate(4), FIXED_TODAY), 4, 'daysUntil counts whole days');
     eq(daysUntil(offsetDate(-2), FIXED_TODAY), -2, 'daysUntil goes negative when overdue');
-    eq(formatDue(offsetDate(0), FIXED_TODAY), 'Today', 'formatDue labels today');
-    eq(formatDue(offsetDate(1), FIXED_TODAY), 'Tomorrow', 'formatDue labels tomorrow');
-    eq(formatDue(offsetDate(-3), FIXED_TODAY), '3 days overdue', 'formatDue labels overdue');
+    eq(formatDue(offsetDate(0), FIXED_TODAY), 'Heute', 'formatDue labels today in German');
+    eq(formatDue(offsetDate(1), FIXED_TODAY), 'Morgen', 'formatDue labels tomorrow in German');
+    eq(formatDue(offsetDate(-1), FIXED_TODAY), 'Gestern', 'formatDue labels yesterday in German');
+    eq(formatDue(offsetDate(-3), FIXED_TODAY), '3 Tage überfällig', 'formatDue labels overdue in German');
+    // Weekday and month names must not fall back to the runner's locale.
+    eq(formatDue(offsetDate(3), FIXED_TODAY), 'Sonntag', 'a nearby date names the German weekday');
   }
 
   // ---- views -----------------------------------------------------------

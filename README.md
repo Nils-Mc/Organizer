@@ -22,10 +22,11 @@ Beides landet deshalb im Worker.
 ## Aufbau
 
 ```
-web/                  Frontend (unverändert abhängigkeitsfrei)
+web/                  Frontend (abhängigkeitsfrei)
   index.html
   css/styles.css
-  js/{store,filters,ui,app}.js
+  js/{store,filters,ui,app}.js   Aufgaben-Teil, offline
+  js/{api,school,schedule}.js    Schul-Teil gegen den Worker
 worker/
   schema.sql          D1-Schema
   src/index.js        Router, Cron-Sync, Transkriptions-Queue
@@ -65,14 +66,20 @@ zweiter Sync ändert deshalb nichts. Vor allem: **eine lokal abgehakte Hausaufga
 bleibt abgehakt**, auch wenn Untis sie weiter als offen meldet. Notizen,
 Aufnahmen und Zusammenfassungen haben keine Untis-Id und werden nie überschrieben.
 
-## Einrichtung
+## Stand der Einrichtung
+
+Die D1-Datenbank ist bereits angelegt und das Schema eingespielt — ihre ID
+steht in `wrangler.toml`. **R2 und Queues fehlen noch:** R2 ist für den Account
+nicht freigeschaltet, Queues brauchen den Workers-Paid-Plan. Beide Bindings sind
+deshalb in `wrangler.toml` auskommentiert, damit der Worker heute deployt und
+läuft. Ohne sie funktionieren Sync, Fächer, Notizen, Hausaufgaben, Klausuren und
+Suche vollständig; nur der Datei-Upload antwortet mit einer klaren Meldung statt
+zu arbeiten. Die vier Schritte zum Nachrüsten stehen als Kommentar in
+`wrangler.toml`.
 
 ```sh
 npm install
-npx wrangler d1 create organizer          # ID in wrangler.toml eintragen
-npx wrangler r2 bucket create organizer-media
-npx wrangler queues create organizer-transcribe
-npm run db:init                            # Schema lokal anlegen
+npm run db:init      # nur nötig, wenn du eine eigene Datenbank anlegst
 ```
 
 Zugangsdaten als Secrets — niemals in `wrangler.toml`:

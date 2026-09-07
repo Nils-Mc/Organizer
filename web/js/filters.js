@@ -42,14 +42,14 @@ export function dueBucket(task, today = new Date()) {
 
 export function formatDue(iso, today = new Date()) {
   const delta = daysUntil(iso, today);
-  if (delta === 0) return 'Today';
-  if (delta === 1) return 'Tomorrow';
-  if (delta === -1) return 'Yesterday';
-  if (delta < 0) return `${Math.abs(delta)} days overdue`;
+  if (delta === 0) return 'Heute';
+  if (delta === 1) return 'Morgen';
+  if (delta === -1) return 'Gestern';
+  if (delta < 0) return `${Math.abs(delta)} Tage überfällig`;
   if (delta <= 7) {
-    return parseISODate(iso).toLocaleDateString(undefined, { weekday: 'long' });
+    return parseISODate(iso).toLocaleDateString('de-DE', { weekday: 'long' });
   }
-  return parseISODate(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return parseISODate(iso).toLocaleDateString('de-DE', { month: 'short', day: 'numeric' });
 }
 
 /** Free-text match across title, notes and tags. */

@@ -34,6 +34,7 @@ import { runUntisTests } from './untis.tests.js';
 import { runSyncTests } from './sync.tests.js';
 import { runAuthTests } from './auth.tests.js';
 import { runSrsTests } from './srs.tests.js';
+import { runScheduleTests } from './schedule.tests.js';
 
 const results = document.getElementById('results');
 const summary = document.getElementById('summary');
@@ -61,6 +62,7 @@ await runUntisTests(report);
 await runSyncTests(report);
 await runAuthTests(report);
 runSrsTests(report);
+runScheduleTests(report);
 
 summary.textContent = `${passed} passed, ${failed} failed`;
 summary.className = failed ? 'fail' : 'pass';

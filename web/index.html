@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,61 +8,65 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128203;</text></svg>">
 </head>
 <body>
-<a class="skip-link" href="#main">Skip to tasks</a>
+<a class="skip-link" href="#main">Zu den Aufgaben springen</a>
 
 <header class="topbar">
-  <button id="menu-toggle" class="icon-btn" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+  <button id="menu-toggle" class="icon-btn" aria-label="Seitenleiste umschalten" aria-expanded="false">&#9776;</button>
   <h1 class="brand">Organizer</h1>
   <div class="search-wrap">
-    <input id="search" type="search" placeholder="Search tasks…  ( / )" aria-label="Search tasks" autocomplete="off">
+    <input id="search" type="search" placeholder="Aufgaben suchen…  ( / )" aria-label="Aufgaben suchen" autocomplete="off">
   </div>
   <label class="sort-wrap">
-    <span class="visually-hidden">Sort by</span>
-    <select id="sort" aria-label="Sort tasks by">
-      <option value="due">Due date</option>
-      <option value="priority">Priority</option>
-      <option value="created">Newest</option>
-      <option value="title">Title</option>
+    <span class="visually-hidden">Sortieren nach</span>
+    <select id="sort" aria-label="Aufgaben sortieren nach">
+      <option value="due">Fälligkeit</option>
+      <option value="priority">Priorität</option>
+      <option value="created">Neueste</option>
+      <option value="title">Titel</option>
     </select>
   </label>
-  <button id="theme-toggle" class="icon-btn" aria-label="Toggle colour theme" title="Toggle colour theme">&#9788;</button>
+  <button id="theme-toggle" class="icon-btn" aria-label="Farbschema umschalten" title="Farbschema umschalten">&#9788;</button>
 </header>
 
+<div class="layout school-layout">
+  <section id="school-panel" class="school-panel" aria-label="Schul-Bereich" hidden></section>
+</div>
+
 <div class="layout">
-  <nav id="sidebar" class="sidebar" aria-label="Views and projects">
-    <h2 class="side-heading">Views</h2>
+  <nav id="sidebar" class="sidebar" aria-label="Ansichten und Projekte">
+    <h2 class="side-heading">Ansichten</h2>
     <ul id="view-list" class="side-list"></ul>
 
     <h2 class="side-heading">
-      Projects
-      <button id="add-project" class="link-btn" type="button">+ New</button>
+      Projekte
+      <button id="add-project" class="link-btn" type="button">+ Neu</button>
     </h2>
     <ul id="project-list" class="side-list"></ul>
 
-    <h2 class="side-heading">Data</h2>
+    <h2 class="side-heading">Daten</h2>
     <div class="side-actions">
-      <button id="export-btn" class="link-btn" type="button">Export JSON</button>
-      <button id="import-btn" class="link-btn" type="button">Import JSON</button>
+      <button id="export-btn" class="link-btn" type="button">JSON exportieren</button>
+      <button id="import-btn" class="link-btn" type="button">JSON importieren</button>
       <input id="import-file" type="file" accept="application/json,.json" hidden>
     </div>
   </nav>
 
   <main id="main" class="main">
     <div class="main-head">
-      <h2 id="view-title">Today</h2>
+      <h2 id="view-title">Heute</h2>
       <p id="view-summary" class="view-summary"></p>
     </div>
 
     <form id="new-task-form" class="new-task" autocomplete="off">
-      <input id="new-task-title" type="text" placeholder="Add a task…  use #tag to tag it  ( n )" aria-label="New task title" required>
-      <input id="new-task-due" type="date" aria-label="Due date">
-      <select id="new-task-priority" aria-label="Priority">
-        <option value="low">Low</option>
+      <input id="new-task-title" type="text" placeholder="Aufgabe hinzufügen…  #tag zum Verschlagworten  ( n )" aria-label="Titel der neuen Aufgabe" required>
+      <input id="new-task-due" type="date" aria-label="Fälligkeitsdatum">
+      <select id="new-task-priority" aria-label="Priorität">
+        <option value="low">Niedrig</option>
         <option value="normal" selected>Normal</option>
-        <option value="high">High</option>
+        <option value="high">Hoch</option>
       </select>
-      <select id="new-task-project" aria-label="Project"></select>
-      <button type="submit" class="primary-btn">Add</button>
+      <select id="new-task-project" aria-label="Projekt"></select>
+      <button type="submit" class="primary-btn">Hinzufügen</button>
     </form>
 
     <div id="task-container" class="task-container"></div>
@@ -71,7 +75,7 @@
 
 <div id="toast" class="toast" hidden>
   <span id="toast-text"></span>
-  <button id="toast-action" class="link-btn" type="button">Undo</button>
+  <button id="toast-action" class="link-btn" type="button">Rückgängig</button>
 </div>
 
 <div id="live-region" class="visually-hidden" role="status" aria-live="polite"></div>

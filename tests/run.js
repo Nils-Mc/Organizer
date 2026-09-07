@@ -4,6 +4,7 @@ import { runUntisTests } from './untis.tests.js';
 import { runSyncTests } from './sync.tests.js';
 import { runAuthTests } from './auth.tests.js';
 import { runSrsTests } from './srs.tests.js';
+import { runScheduleTests } from './schedule.tests.js';
 
 let passed = 0;
 const failures = [];
@@ -19,6 +20,7 @@ await runUntisTests(report);
 await runSyncTests(report);
 await runAuthTests(report);
 runSrsTests(report);
+runScheduleTests(report);
 
 for (const failure of failures) console.error('FAIL  ' + failure);
 console.log(`\n${passed} passed, ${failures.length} failed`);
