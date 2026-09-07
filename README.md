@@ -7,6 +7,9 @@ KI-Zusammenfassungen, Lernkarten und Suche über alles.
 Läuft als Cloudflare Worker. Das Frontend bleibt abhängigkeitsfreies HTML, CSS
 und ES-Module; der Worker hält alles, was Zugangsdaten braucht.
 
+**Live:** https://organizer.nils-1132.workers.dev — deployt, aber noch ohne
+Zugangsdaten. Anmelden geht erst nach `npm run setup` (siehe unten).
+
 ## Warum ein Server nötig ist
 
 Die erste Fassung war eine reine Browser-App. Das geht hier nicht mehr, aus zwei
