@@ -702,6 +702,35 @@ button:active { transform: scale(.98); }
 .lesson.cancelled strong { text-decoration: line-through; }
 .lesson .pill { align-self: flex-start; margin-top: 2px; }
 
+/* A deadline inside a day column. Same card shell as a lesson so the column
+   reads as one timeline, but tinted so it is clearly not a class. */
+.due-chip {
+  background: color-mix(in srgb, var(--card-accent) 8%, var(--surface-alt));
+  border-style: dashed;
+}
+.due-chip.exam { --card-accent: var(--high); }
+.due-chip-head { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.due-chip-head strong {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--text-muted);
+}
+.due-chip-head input[type="checkbox"] {
+  width: 14px; height: 14px; margin: 0; flex: none; cursor: pointer;
+  accent-color: var(--accent);
+}
+.due-chip-title { word-break: break-word; }
+.due-chip .exam-marker { font-size: 13px; line-height: 1; }
+
+/* Separates the all-day deadlines from the timed lessons below them. */
+.day-split {
+  height: 1px;
+  margin: 8px 2px;
+  background: var(--border);
+}
+
 /* ---- subjects ---------------------------------------------------------- */
 .subject-grid {
   display: grid;

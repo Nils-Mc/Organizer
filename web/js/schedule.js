@@ -55,6 +55,43 @@ export function groupByDay(lessons, weekStart, days = 5) {
   return out;
 }
 
+/**
+ * Bucket homework and exams into the same days the grid renders, so a deadline
+ * shows up on the day it is due rather than in a separate list somewhere below.
+ *
+ * `overflow` catches everything outside the visible week — overdue from an
+ * earlier week, or due later. Those must stay reachable: a deadline that
+ * silently disappears because you paged the week forward is worse than one
+ * shown out of place.
+ */
+export function groupDueByDay(dueItems, weekStart, days = 5) {
+  const byDate = new Map();
+  for (const item of dueItems || []) {
+    if (!item || !item.dueDate) continue;
+    if (!byDate.has(item.dueDate)) byDate.set(item.dueDate, []);
+    byDate.get(item.dueDate).push(item);
+  }
+
+  const byDay = [];
+  const visible = new Set();
+  for (let i = 0; i < days; i++) {
+    const day = new Date(weekStart);
+    day.setDate(day.getDate() + i);
+    const iso = toISODate(day);
+    visible.add(iso);
+    // Exams before homework: a test outranks an assignment on the same day.
+    const items = (byDate.get(iso) || []).slice()
+      .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'exam' ? -1 : 1));
+    byDay.push({ date: iso, label: WEEKDAYS[i], items });
+  }
+
+  const overflow = (dueItems || [])
+    .filter((item) => item && item.dueDate && !visible.has(item.dueDate))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  return { byDay, overflow };
+}
+
 /** What changed this week: the bits worth surfacing without reading the grid. */
 export function weekHighlights(lessons) {
   const cancelled = (lessons || []).filter((l) => l.status === 'cancelled');

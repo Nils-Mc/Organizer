@@ -1,6 +1,6 @@
 /** Tests for timetable shaping. */
 import {
-  startOfWeek, weekRange, shiftWeeks, groupByDay, weekHighlights,
+  startOfWeek, weekRange, shiftWeeks, groupByDay, groupDueByDay, weekHighlights,
   weekLabel, upcomingToday, asDueItems, WEEKDAYS,
 } from '../web/js/schedule.js';
 import { toISODate } from '../web/js/filters.js';
@@ -54,6 +54,43 @@ export function runScheduleTests(report) {
     eq(groupByDay([], MONDAY).every((d) => d.lessons.length === 0),
       true, 'a week with no lessons still renders five days');
     eq(groupByDay(null, MONDAY).length, 5, 'groupByDay tolerates null');
+  }
+
+  // ---- due items land on the day they are due --------------------------------
+  {
+    const due = (id, kind, dueDate) => ({ id, kind, title: id, dueDate, done: false });
+    const items = [
+      due('hw-wed', 'homework', '2026-09-09'),
+      due('exam-wed', 'exam', '2026-09-09'),
+      due('hw-mon', 'homework', '2026-09-07'),
+      due('hw-overdue', 'homework', '2026-09-01'),
+      due('hw-later', 'homework', '2026-09-21'),
+      due('hw-undated', 'homework', null),
+    ];
+    const { byDay, overflow } = groupDueByDay(items, MONDAY);
+
+    eq(byDay.length, 5, 'the due grouping matches the five lesson columns');
+    eq(byDay.map((d) => d.date), byDay.map((d) => d.date).slice().sort(),
+      'day buckets stay in chronological order');
+    eq(byDay[0].items.map((i) => i.id), ['hw-mon'], 'Monday keeps its own deadline');
+    eq(byDay[1].items.length, 0, 'a day without deadlines is still present');
+    eq(byDay[2].items.map((i) => i.id), ['exam-wed', 'hw-wed'],
+      'an exam outranks homework due the same day');
+
+    eq(overflow.map((i) => i.id), ['hw-overdue', 'hw-later'],
+      'deadlines outside the visible week stay reachable via overflow');
+    eq(overflow.every((i) => i.dueDate), true,
+      'an item without a due date is never shown as overflow');
+
+    // Paging to the week that contains it must move it out of overflow.
+    const nextWeek = groupDueByDay(items, shiftWeeks(MONDAY, 2));
+    eq(nextWeek.byDay[0].items.map((i) => i.id), ['hw-later'],
+      'paging forward brings a later deadline into its own day');
+
+    eq(groupDueByDay(null, MONDAY).byDay.length, 5, 'groupDueByDay tolerates null');
+    eq(groupDueByDay(null, MONDAY).overflow, [], 'null yields no overflow');
+    eq(groupDueByDay([{ id: 'x' }], MONDAY).overflow, [],
+      'an item with no due date is dropped rather than crashing the grouping');
   }
 
   // ---- highlights ------------------------------------------------------------

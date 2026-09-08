@@ -7,8 +7,8 @@
 
 import { api, probe, ApiError } from './api.js';
 import {
-  startOfWeek, shiftWeeks, weekRange, groupByDay, weekHighlights, weekLabel,
-  upcomingToday, asDueItems, toISODate,
+  startOfWeek, shiftWeeks, weekRange, groupByDay, groupDueByDay, weekHighlights,
+  weekLabel, upcomingToday, asDueItems, toISODate,
 } from './schedule.js';
 import { formatDue } from './filters.js';
 
@@ -238,13 +238,20 @@ export class School {
       wrap.appendChild(nextUp);
     }
 
-    if (!inWeek.length) {
+    // Deadlines belong on the day they are due, next to that day's lessons —
+    // not in a separate list further down the page.
+    const due = asDueItems(this.state || {}).filter((d) => !d.done && d.dueDate);
+    const { byDay: dueByDay, overflow } = groupDueByDay(due, this.weekStart);
+
+    if (!inWeek.length && !dueByDay.some((d) => d.items.length)) {
       wrap.appendChild(node('p', 'empty', 'Keine Stunden in dieser Woche. Schon synchronisiert?'));
+      if (overflow.length) wrap.appendChild(this.overflowCard(overflow));
       return wrap;
     }
 
     const grid = node('div', 'week-grid');
-    for (const day of groupByDay(inWeek, this.weekStart)) {
+    const days = groupByDay(inWeek, this.weekStart);
+    for (const [index, day] of days.entries()) {
       const column = node('div', 'day-column');
       const head = node('h3', 'day-head');
       head.append(node('span', null, day.label));
@@ -252,7 +259,17 @@ export class School {
       if (day.date === toISODate(this.today)) column.classList.add('is-today');
       column.appendChild(head);
 
-      if (!day.lessons.length) column.appendChild(node('p', 'muted small', 'frei'));
+      // All-day deadlines sit above the timed lessons, the way calendars place
+      // all-day events above the hour grid.
+      const dueToday = (dueByDay[index] && dueByDay[index].items) || [];
+      for (const item of dueToday) column.appendChild(this.dueChip(item));
+
+      if (!day.lessons.length && !dueToday.length) {
+        column.appendChild(node('p', 'muted small', 'frei'));
+      }
+      if (day.lessons.length && dueToday.length) {
+        column.appendChild(node('div', 'day-split'));
+      }
 
       for (const lesson of day.lessons) {
         const card = node('div', `lesson ${lesson.status}`);
@@ -279,21 +296,54 @@ export class School {
     }
     wrap.appendChild(grid);
 
-    // Homework and exams, reusing the same due-date vocabulary as the task half.
-    // Grouped into its own card — otherwise it reads as a continuation of the
-    // week grid above instead of a distinct "what's due" block.
-    const due = asDueItems(this.state || {}).filter((d) => !d.done && d.dueDate);
-    if (due.length) {
-      const card = node('div', 'section-card');
-      card.appendChild(node('h3', 'group-heading', `Fällig · ${due.length}`));
-      const list = node('ul', 'task-list');
-      for (const item of due.sort((a, b) => a.dueDate.localeCompare(b.dueDate))) {
-        list.appendChild(this.dueRow(item));
-      }
-      card.appendChild(list);
-      wrap.appendChild(card);
-    }
+    // Anything due outside the visible week — overdue, or further ahead. It has
+    // no column to live in, but must not vanish just because you paged the week.
+    if (overflow.length) wrap.appendChild(this.overflowCard(overflow));
     return wrap;
+  }
+
+  /** Deadlines that fall outside the week currently on screen. */
+  overflowCard(overflow) {
+    const card = node('div', 'section-card');
+    const today = toISODate(this.today);
+    const overdue = overflow.filter((i) => i.dueDate < today).length;
+    card.appendChild(node('h3', 'group-heading',
+      overdue ? `Außerhalb dieser Woche · ${overflow.length} (${overdue} überfällig)`
+              : `Außerhalb dieser Woche · ${overflow.length}`));
+    const list = node('ul', 'task-list');
+    for (const item of overflow) list.appendChild(this.dueRow(item));
+    card.appendChild(list);
+    return card;
+  }
+
+  /**
+   * A deadline as it appears inside a day column: the same card shell as a
+   * lesson, so the column reads as one timeline rather than two stacked lists.
+   */
+  dueChip(item) {
+    const chip = node('div', `lesson due-chip ${item.kind}`);
+    if (item.color) chip.style.setProperty('--card-accent', item.color);
+
+    const head = node('div', 'due-chip-head');
+    if (item.kind === 'homework') {
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = item.done;
+      box.setAttribute('aria-label', `"${item.title}" abhaken`);
+      box.addEventListener('change', () => this.run('Speichere', async () => {
+        await api.setHomeworkCompleted(item.id, box.checked);
+        await this.load();
+      }));
+      head.appendChild(box);
+    } else {
+      head.appendChild(node('span', 'exam-marker', '★'));
+    }
+    head.appendChild(node('strong', null, item.kind === 'exam' ? 'Klausur' : 'Hausaufgabe'));
+    chip.appendChild(head);
+
+    chip.appendChild(node('span', 'due-chip-title', item.title));
+    if (item.subject) chip.appendChild(node('span', 'muted small', item.subject));
+    return chip;
   }
 
   dueRow(item) {
