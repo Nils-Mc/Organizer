@@ -279,15 +279,19 @@ export class School {
     }
     wrap.appendChild(grid);
 
-    // Homework and exams, reusing the same due-date vocabulary as the task half
+    // Homework and exams, reusing the same due-date vocabulary as the task half.
+    // Grouped into its own card — otherwise it reads as a continuation of the
+    // week grid above instead of a distinct "what's due" block.
     const due = asDueItems(this.state || {}).filter((d) => !d.done && d.dueDate);
     if (due.length) {
-      wrap.appendChild(node('h3', 'group-heading', 'Fällig'));
+      const card = node('div', 'section-card');
+      card.appendChild(node('h3', 'group-heading', `Fällig · ${due.length}`));
       const list = node('ul', 'task-list');
       for (const item of due.sort((a, b) => a.dueDate.localeCompare(b.dueDate))) {
         list.appendChild(this.dueRow(item));
       }
-      wrap.appendChild(list);
+      card.appendChild(list);
+      wrap.appendChild(card);
     }
     return wrap;
   }
@@ -375,6 +379,12 @@ export class School {
     wrap.appendChild(back);
     wrap.appendChild(node('h2', null, subject.long_name || subject.name));
 
+    // Both creation forms live in one card, clearly separated from the
+    // "browse what's already here" lists below — otherwise four stacked
+    // forms and lists read as one undifferentiated block.
+    const addCard = node('div', 'section-card');
+    addCard.appendChild(node('h3', 'group-heading', 'Neu hinzufügen'));
+
     // --- new note
     const form = node('form', 'note-form');
     const title = document.createElement('input');
@@ -399,7 +409,7 @@ export class School {
         this.announce('Notiz gespeichert');
       });
     });
-    wrap.appendChild(form);
+    addCard.appendChild(form);
 
     // --- upload
     const upload = node('form', 'upload-form');
@@ -421,7 +431,8 @@ export class School {
         this.announce('Datei hochgeladen');
       });
     });
-    wrap.appendChild(upload);
+    addCard.appendChild(upload);
+    wrap.appendChild(addCard);
 
     const data = this.subjectData;
     if (!data) {

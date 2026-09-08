@@ -25,7 +25,7 @@
   --radius-sm: 8px;
   --sidebar-w: 236px;
   --ease: cubic-bezier(.16, 1, .3, 1);
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.12'/%3E%3C/svg%3E");
 }
 
 :root[data-theme="dark"],
@@ -232,9 +232,11 @@ button:active { transform: scale(.98); }
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-muted);
-  margin: 14px 8px 4px;
+  margin: 18px 8px 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
-.side-heading:first-of-type { margin-top: 2px; }
+.side-heading:first-of-type { margin-top: 2px; padding-top: 0; border-top: 0; }
 
 .side-list { list-style: none; margin: 0; padding: 0; }
 
@@ -346,12 +348,43 @@ button:active { transform: scale(.98); }
 
 /* ---- task list ------------------------------------------------------- */
 .group-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
   color: var(--text-muted);
-  margin: 18px 2px 6px;
+  margin: 22px 2px 8px;
 }
 .group-heading:first-child { margin-top: 0; }
+.group-heading::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: .6;
+}
+
+/* A titled block that visually chunks related content apart from whatever
+   sits above or below it — used wherever several forms or lists would
+   otherwise blur into one continuous wall of content. */
+.section-card {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px 16px;
+  margin: 18px 0;
+}
+.section-card:first-child { margin-top: 0; }
+.section-card .group-heading { margin-top: 0; }
+.section-card .task-list .task,
+.section-card .note-card,
+.section-card .search-hit,
+.section-card .material-row,
+.section-card .flashcards li { background: var(--surface); }
 
 .task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 
@@ -788,8 +821,7 @@ button:active { transform: scale(.98); }
   backface-visibility: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--grain), var(--glass-bg);
-  background-blend-mode: overlay, normal;
+  background: var(--glass-bg);
   backdrop-filter: blur(30px) saturate(2.2);
   -webkit-backdrop-filter: blur(30px) saturate(2.2);
   box-shadow: var(--shadow-lg), var(--glass-highlight), inset 0 0 0 1px color-mix(in srgb, var(--card-accent) 30%, transparent);
