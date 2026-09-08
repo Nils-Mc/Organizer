@@ -4,7 +4,7 @@
 import { PRIORITIES } from './store.js';
 import {
   filterByView, sortTasks, groupByDue, matchesSearch,
-  countsFor, formatDue, toISODate,
+  countsFor, formatDue, toISODate, dayPlan, formatDayHeading,
 } from './filters.js';
 
 const VIEWS = [
@@ -24,6 +24,10 @@ export class UI {
     this.editingId = null;
     this.undo = null;
     this.undoTimer = null;
+    // Lessons for the day plan, supplied by app.js once the school panel has
+    // loaded. A plain hook rather than an import: the task half has to keep
+    // working with no backend at all, and must not depend on school.js.
+    this.lessonsForDay = () => [];
 
     this.dom = {
       viewList: el('view-list'),
@@ -36,6 +40,7 @@ export class UI {
       form: el('new-task-form'),
       title: el('new-task-title'),
       due: el('new-task-due'),
+      time: el('new-task-time'),
       priority: el('new-task-priority'),
       project: el('new-task-project'),
       sidebar: el('sidebar'),
@@ -71,12 +76,14 @@ export class UI {
       const task = this.store.addTask({
         title: d.title.value,
         dueDate: d.due.value || null,
+        dueTime: d.time.value || null,
         priority: d.priority.value,
         projectId: d.project.value || null,
       });
       if (!task) return;
       d.title.value = '';
       d.due.value = '';
+      d.time.value = '';
       d.title.focus();
 
       // A task with no due date added from "Today" would otherwise be filed
@@ -199,6 +206,14 @@ export class UI {
   }
 
   onTaskClick(event) {
+    // Timeline lines toggle their task directly.
+    const timelineToggle = event.target.closest('[data-toggle]');
+    if (timelineToggle) {
+      const task = this.store.toggleTask(timelineToggle.dataset.toggle);
+      if (task) this.announce(`${task.title} ${task.done ? 'erledigt' : 'wieder offen'}`);
+      return;
+    }
+
     const taskEl = event.target.closest('.task');
     if (!taskEl) return;
     const id = taskEl.dataset.id;
@@ -313,7 +328,7 @@ export class UI {
     );
 
     this.dom.viewTitle.textContent = this.viewLabel(view);
-    this.dom.viewSummary.textContent = this.summaryText(visible.length, query, counts);
+    this.dom.viewSummary.textContent = this.summaryText(visible.length, query, counts, view);
 
     this.renderTasks(visible, view, today);
   }
@@ -334,9 +349,19 @@ export class UI {
     return known ? known.label : 'Aufgaben';
   }
 
-  summaryText(count, query, counts) {
+  summaryText(count, query, counts, view) {
     const noun = count === 1 ? 'Aufgabe' : 'Aufgaben';
     if (query.trim()) return `${count} ${noun} zu „${query.trim()}“`;
+
+    // The dashboard leads with what is actually pressing today, not with
+    // lifetime totals.
+    if (view === 'today') {
+      const plan = dayPlan(this.store.state.tasks, this.today);
+      const parts = [`${plan.open} ${plan.open === 1 ? 'Aufgabe' : 'Aufgaben'} heute`];
+      if (plan.overdue.length) parts.push(`${plan.overdue.length} überfällig`);
+      if (plan.done) parts.push(`${plan.done} erledigt`);
+      return parts.join(' · ');
+    }
     return `${count} ${noun} · ${counts.all} offen gesamt · ${counts.completed} erledigt`;
   }
 
@@ -438,6 +463,15 @@ export class UI {
     const container = this.dom.container;
     container.textContent = '';
 
+    // "Heute" is the dashboard: the day itself as a timeline first, then a
+    // look ahead. Searching falls back to the plain list — a timeline of
+    // search hits would be nonsense.
+    if (view === 'today' && !this.dom.search.value.trim()) {
+      this.renderDayPlan(container, today);
+      this.renderLookahead(container, today);
+      return;
+    }
+
     if (!tasks.length) {
       const empty = document.createElement('p');
       empty.className = 'empty';
@@ -464,6 +498,157 @@ export class UI {
       const ul = document.createElement('ul');
       ul.className = 'task-list';
       for (const task of group.tasks) ul.appendChild(this.taskElement(task, today));
+      container.appendChild(ul);
+    }
+  }
+
+  /**
+   * The day as a timeline: what happens when, in the order it happens.
+   * Lessons and tasks share one line of time — the point of a day plan is that
+   * you look in exactly one place.
+   */
+  renderDayPlan(container, today) {
+    const plan = dayPlan(this.store.state.tasks, today);
+    const lessons = this.lessonsForDay(toISODate(today)) || [];
+
+    const section = document.createElement('section');
+    section.className = 'day-plan';
+
+    const head = document.createElement('h3');
+    head.className = 'day-plan-head';
+    head.textContent = `Heute · ${formatDayHeading(today)}`;
+    section.appendChild(head);
+
+    // Timed tasks and lessons interleave strictly by clock time.
+    const timed = [
+      ...plan.timed.map((task) => ({ time: task.dueTime, task })),
+      ...lessons.map((lesson) => ({ time: lesson.start_time, lesson })),
+    ].sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+    if (!timed.length && !plan.untimed.length) {
+      const empty = document.createElement('p');
+      empty.className = 'day-plan-empty';
+      empty.textContent = 'Heute ist nichts geplant.';
+      section.appendChild(empty);
+    }
+
+    if (timed.length) {
+      const list = document.createElement('ol');
+      list.className = 'timeline';
+      for (const entry of timed) list.appendChild(this.timelineEntry(entry));
+      section.appendChild(list);
+    }
+
+    if (plan.untimed.length) {
+      const heading = document.createElement('p');
+      heading.className = 'timeline-subhead';
+      heading.textContent = 'Ohne feste Uhrzeit';
+      section.appendChild(heading);
+
+      const list = document.createElement('ol');
+      list.className = 'timeline';
+      for (const task of plan.untimed) list.appendChild(this.timelineEntry({ task }));
+      section.appendChild(list);
+    }
+
+    const foot = document.createElement('p');
+    foot.className = 'day-plan-foot';
+    foot.textContent = plan.open
+      ? `Noch offen: ${plan.open} ${plan.open === 1 ? 'Aufgabe' : 'Aufgaben'}`
+      : 'Alles erledigt für heute.';
+    section.appendChild(foot);
+
+    container.appendChild(section);
+
+    if (plan.overdue.length) {
+      const heading = document.createElement('h3');
+      heading.className = 'group-heading is-overdue';
+      heading.textContent = `Überfällig · ${plan.overdue.length}`;
+      container.appendChild(heading);
+
+      const ul = document.createElement('ul');
+      ul.className = 'task-list';
+      for (const task of plan.overdue) ul.appendChild(this.taskElement(task, today));
+      container.appendChild(ul);
+    }
+  }
+
+  /** One line of the day: priority dot, clock time, what it is. */
+  timelineEntry({ time, task, lesson }) {
+    const li = document.createElement('li');
+
+    if (lesson) {
+      li.className = `timeline-entry is-lesson ${lesson.status || ''}`.trim();
+      if (lesson.subject_color) li.style.setProperty('--entry-accent', lesson.subject_color);
+
+      const dot = document.createElement('span');
+      dot.className = 'timeline-dot';
+      li.appendChild(dot);
+
+      const clock = document.createElement('span');
+      clock.className = 'timeline-time';
+      clock.textContent = time || '';
+      li.appendChild(clock);
+
+      const label = document.createElement('span');
+      label.className = 'timeline-title';
+      label.textContent = lesson.subject_name || 'Unterricht';
+      li.appendChild(label);
+
+      const tag = document.createElement('span');
+      tag.className = 'timeline-kind';
+      tag.textContent = lesson.status === 'cancelled' ? 'Entfall' : 'Unterricht';
+      li.appendChild(tag);
+      return li;
+    }
+
+    li.className = `timeline-entry prio-${task.priority}${task.done ? ' is-done' : ''}`;
+
+    // The whole line toggles the task: in a day plan, ticking something off is
+    // the action you take, so it should not require aiming at a small box.
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'timeline-button';
+    button.dataset.toggle = task.id;
+    button.setAttribute('aria-pressed', String(task.done));
+    button.title = task.done ? 'Als offen markieren' : 'Als erledigt markieren';
+
+    const dot = document.createElement('span');
+    dot.className = 'timeline-dot';
+    button.appendChild(dot);
+
+    const clock = document.createElement('span');
+    clock.className = 'timeline-time';
+    clock.textContent = task.dueTime || '—';
+    button.appendChild(clock);
+
+    const label = document.createElement('span');
+    label.className = 'timeline-title';
+    label.textContent = task.title;
+    button.appendChild(label);
+
+    li.appendChild(button);
+    return li;
+  }
+
+  /** What is coming after today, so the dashboard is not blind past midnight. */
+  renderLookahead(container, today) {
+    const iso = toISODate(today);
+    const ahead = this.store.state.tasks
+      .filter((t) => !t.done && t.dueDate && t.dueDate > iso);
+    if (!ahead.length) return;
+
+    for (const group of groupByDue(ahead, today)) {
+      const heading = document.createElement('h3');
+      heading.className = 'group-heading';
+      heading.textContent = `${group.label} · ${group.tasks.length}`;
+      container.appendChild(heading);
+
+      const ul = document.createElement('ul');
+      ul.className = 'task-list';
+      for (const task of sortTasks(group.tasks, 'due')) {
+        ul.appendChild(this.taskElement(task, today));
+      }
       container.appendChild(ul);
     }
   }

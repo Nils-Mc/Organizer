@@ -111,18 +111,23 @@ export function sortTasks(tasks, sortBy = 'due') {
     if (sortBy === 'title') {
       return a.title.localeCompare(b.title);
     }
+    if (sortBy === 'manual') {
+      // Hand-dragged order. Ties fall back to creation so the sort stays total.
+      const byOrder = (a.order ?? 0) - (b.order ?? 0);
+      return byOrder !== 0 ? byOrder : a.createdAt.localeCompare(b.createdAt);
+    }
     return b.createdAt.localeCompare(a.createdAt); // 'created' — newest first
   });
   return copy;
 }
 
 const GROUP_LABELS = {
-  overdue: 'Overdue',
-  today: 'Today',
-  tomorrow: 'Tomorrow',
-  week: 'This week',
-  later: 'Later',
-  none: 'No due date',
+  overdue: 'Überfällig',
+  today: 'Heute',
+  tomorrow: 'Morgen',
+  week: 'Diese Woche',
+  later: 'Später',
+  none: 'Ohne Datum',
 };
 
 const GROUP_ORDER = ['overdue', 'today', 'tomorrow', 'week', 'later', 'none'];
@@ -137,6 +142,39 @@ export function groupByDue(tasks, today = new Date()) {
   return GROUP_ORDER
     .filter((key) => buckets.get(key).length > 0)
     .map((key) => ({ key, label: GROUP_LABELS[key], tasks: buckets.get(key) }));
+}
+
+/**
+ * The plan for one day: what is scheduled, in the order it happens.
+ *
+ * Timed entries come first, sorted by clock time; untimed ones follow, because
+ * "sometime today" cannot be placed between 14:30 and 16:00 without lying about
+ * when it is. Overdue work is carried in separately — it is not part of today's
+ * schedule, but pretending it does not exist is how deadlines get missed.
+ */
+export function dayPlan(tasks, today = new Date()) {
+  const iso = toISODate(today);
+  const forDay = (tasks || []).filter((t) => t.dueDate === iso);
+
+  const timed = forDay.filter((t) => t.dueTime)
+    .sort((a, b) => a.dueTime.localeCompare(b.dueTime));
+  const untimed = forDay.filter((t) => !t.dueTime);
+
+  const overdue = (tasks || []).filter((t) => !t.done && t.dueDate && t.dueDate < iso);
+
+  return {
+    date: iso,
+    timed,
+    untimed,
+    overdue,
+    open: forDay.filter((t) => !t.done).length,
+    done: forDay.filter((t) => t.done).length,
+  };
+}
+
+/** "Dienstag, 8. September" — the day plan's headline. */
+export function formatDayHeading(date = new Date()) {
+  return date.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 /** Open/total counts per view, for the sidebar badges. */

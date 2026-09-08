@@ -7,7 +7,7 @@
 import { Store, parseTags, normalizeState, STORAGE_KEY } from '../web/js/store.js';
 import {
   toISODate, daysUntil, dueBucket, filterByView, sortTasks,
-  groupByDue, matchesSearch, countsFor, formatDue,
+  groupByDue, matchesSearch, countsFor, formatDue, dayPlan,
 } from '../web/js/filters.js';
 
 /** Minimal in-memory stand-in for the Storage interface. */
@@ -150,6 +150,21 @@ export function runTests(report) {
     eq(state.tasks[0].priority, 'normal', 'normalizeState fills in defaults');
     eq(normalizeState({ tasks: [{ id: 'x', title: 'A' }, { id: 'x', title: 'B' }] }).tasks.length, 1,
       'normalizeState drops duplicate ids');
+
+    // normalizeState rebuilds tasks field by field and drops anything it does
+    // not know about, so a field added elsewhere survives in memory and then
+    // vanishes on the next load. These guard exactly that.
+    const kept = normalizeState({
+      tasks: [{ id: 't', title: 'Timed', dueDate: '2026-09-08', dueTime: '14:30', order: 7 }],
+    }).tasks[0];
+    eq(kept.dueTime, '14:30', 'normalizeState keeps a valid dueTime across a load');
+    eq(kept.order, 7, 'normalizeState keeps a manual order across a load');
+
+    const cleaned = normalizeState({
+      tasks: [{ id: 't', title: 'Bad', dueTime: '25:99', order: 'seven' }],
+    }).tasks[0];
+    eq(cleaned.dueTime, null, 'an impossible clock time is discarded');
+    eq(cleaned.order, 0, 'a non-numeric order falls back to the load position');
   }
 
   // ---- date buckets ----------------------------------------------------
@@ -205,9 +220,53 @@ export function runTests(report) {
     sortTasks(tasks, 'title');
     eq(tasks.map((t) => t.title), original, 'sortTasks does not mutate its input');
 
+    // manual order — the mode drag and drop writes into
+    {
+      const dragged = [
+        { ...tasks[0], order: 2 },
+        { ...tasks[1], order: 0 },
+        { ...tasks[2], order: 1 },
+      ];
+      eq(sortTasks(dragged, 'manual').map((t) => t.title), ['Today', 'Soon', 'Overdue'],
+        'manual sort follows the dragged order, not the due date');
+      eq(sortTasks([{ ...tasks[0], order: 1 }, { ...tasks[1], order: 1 }], 'manual')
+        .map((t) => t.title), ['Overdue', 'Today'],
+        'an order tie falls back to creation time so the sort stays stable');
+    }
+
     // grouping
     eq(groupByDue(tasks.filter((t) => !t.done), FIXED_TODAY).map((g) => g.key),
       ['overdue', 'today', 'week', 'later', 'none'], 'groups are ordered and empty ones omitted');
+    eq(groupByDue(tasks.filter((t) => !t.done), FIXED_TODAY).map((g) => g.label),
+      ['Überfällig', 'Heute', 'Diese Woche', 'Später', 'Ohne Datum'],
+      'group labels are German, matching the rest of the interface');
+
+    // ---- the day plan ------------------------------------------------------
+    {
+      const t = (title, over) => ({
+        id: title, title, done: false, dueDate: offsetDate(0), dueTime: null,
+        priority: 'normal', projectId: null, tags: [], notes: '', createdAt: '2026-01-01', ...over,
+      });
+      const plan = dayPlan([
+        t('Abends', { dueTime: '18:00' }),
+        t('Irgendwann heute'),
+        t('Mittags', { dueTime: '14:30' }),
+        t('Erledigt', { dueTime: '09:00', done: true }),
+        t('Gestern', { dueDate: offsetDate(-1) }),
+        t('Morgen', { dueDate: offsetDate(1), dueTime: '08:00' }),
+      ], FIXED_TODAY);
+
+      eq(plan.timed.map((x) => x.title), ['Erledigt', 'Mittags', 'Abends'],
+        'timed entries run in clock order');
+      eq(plan.untimed.map((x) => x.title), ['Irgendwann heute'],
+        'an entry without a time is kept aside, not slotted between timed ones');
+      eq(plan.overdue.map((x) => x.title), ['Gestern'],
+        'overdue work is carried separately rather than dropped');
+      eq(plan.open, 3, 'the open count covers only this day');
+      eq(plan.done, 1, 'finished entries are counted, not hidden');
+      eq(dayPlan([], FIXED_TODAY).timed, [], 'an empty day plans cleanly');
+      eq(dayPlan(null, FIXED_TODAY).open, 0, 'dayPlan tolerates null');
+    }
 
     // search
     ok(matchesSearch(tasks[3], 'later'), 'search matches notes');

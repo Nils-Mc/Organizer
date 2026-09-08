@@ -62,7 +62,16 @@ window.addEventListener('storage', (event) => {
  * original offline task app.
  */
 const school = new School(document.getElementById('school-panel'), (msg) => ui.announce(msg));
-school.init().catch(() => { /* no backend — the task app is unaffected */ });
+
+// Feed the day plan with the school timetable, one-way. The task app never
+// imports school.js — with no backend this hook simply keeps returning nothing
+// and the day plan shows tasks only.
+ui.lessonsForDay = (iso) =>
+  ((school.state && school.state.lessons) || []).filter((lesson) => lesson.date === iso);
+
+school.init()
+  .then(() => ui.render())
+  .catch(() => { /* no backend — the task app is unaffected */ });
 
 // Exposed for the end-to-end tests and for poking around in the console.
 window.organizer = { store, ui, prefs, school };

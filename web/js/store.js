@@ -24,6 +24,15 @@ function emptyState() {
   return { version: SCHEMA_VERSION, projects: [], tasks: [] };
 }
 
+/**
+ * A real wall-clock time, not merely two digits and a colon: `25:99` has the
+ * right shape and does not exist, and a day plan sorted by it would place the
+ * entry somewhere nonsensical rather than reject it.
+ */
+export function isClockTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
 /** Pull `#tag` tokens out of a title, returning the cleaned title and the tags. */
 export function parseTags(rawTitle) {
   const tags = [];
@@ -83,10 +92,16 @@ export function normalizeState(raw) {
         projectId: typeof t.projectId === 'string' && projectIds.has(t.projectId) ? t.projectId : null,
         done,
         dueDate: /^\d{4}-\d{2}-\d{2}$/.test(t.dueDate) ? t.dueDate : null,
+        // Optional clock time on the due day. Without it a task is "sometime
+        // today" and sorts after everything that has a time.
+        dueTime: isClockTime(t.dueTime) ? t.dueTime : null,
         priority: PRIORITIES.includes(t.priority) ? t.priority : 'normal',
         tags: Array.isArray(t.tags)
           ? [...new Set(t.tags.filter((x) => typeof x === 'string' && x).map((x) => x.toLowerCase()))]
           : [],
+        // Manual drag-and-drop position. Falls back to the load order so tasks
+        // written before this field existed keep the sequence they had.
+        order: Number.isFinite(t.order) ? t.order : state.tasks.length,
         createdAt: typeof t.createdAt === 'string' ? t.createdAt : now,
         updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : now,
         completedAt: done && typeof t.completedAt === 'string' ? t.completedAt : null,
@@ -180,7 +195,7 @@ export class Store {
 
   getTask(id) { return this.state.tasks.find((t) => t.id === id) || null; }
 
-  addTask({ title, projectId = null, dueDate = null, priority = 'normal', notes = '' }) {
+  addTask({ title, projectId = null, dueDate = null, dueTime = null, priority = 'normal', notes = '' }) {
     const parsed = parseTags(title);
     if (!parsed.title) return null;
     const now = new Date().toISOString();
@@ -191,8 +206,11 @@ export class Store {
       projectId: projectId && this.getProject(projectId) ? projectId : null,
       done: false,
       dueDate: /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null,
+      // A time without a day has nothing to anchor to, so it is dropped.
+      dueTime: dueDate && isClockTime(dueTime) ? dueTime : null,
       priority: PRIORITIES.includes(priority) ? priority : 'normal',
       tags: parsed.tags,
+      order: this.state.tasks.length,
       createdAt: now,
       updatedAt: now,
       completedAt: null,
@@ -221,7 +239,14 @@ export class Store {
     }
     if ('dueDate' in patch) {
       task.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(patch.dueDate) ? patch.dueDate : null;
+      // Clearing the day clears the time with it — 18:00 of nothing is not a
+      // thing the day plan can place.
+      if (!task.dueDate) task.dueTime = null;
     }
+    if ('dueTime' in patch) {
+      task.dueTime = task.dueDate && isClockTime(patch.dueTime) ? patch.dueTime : null;
+    }
+    if ('order' in patch && Number.isFinite(patch.order)) task.order = patch.order;
     if (PRIORITIES.includes(patch.priority)) task.priority = patch.priority;
     if (typeof patch.done === 'boolean') {
       task.done = patch.done;
