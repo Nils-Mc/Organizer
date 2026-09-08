@@ -18,13 +18,14 @@
   --low: #0f9d58;
   --shadow: 0 1px 2px rgba(15, 15, 15, .04), 0 3px 10px rgba(15, 15, 15, .05);
   --shadow-lg: 0 4px 12px rgba(15, 15, 15, .06), 0 16px 36px rgba(15, 15, 15, .10);
-  --glass-bg: rgba(255, 255, 255, .55);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, .7);
-  --radius: 9px;
-  --radius-lg: 14px;
-  --radius-sm: 6px;
-  --sidebar-w: 232px;
-  --ease: cubic-bezier(.25, .1, .25, 1);
+  --glass-bg: rgba(255, 255, 255, .5);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, .75);
+  --radius: 12px;
+  --radius-lg: 20px;
+  --radius-sm: 8px;
+  --sidebar-w: 236px;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
 }
 
 :root[data-theme="dark"],
@@ -82,11 +83,24 @@
 html { background: var(--bg); }
 
 body {
+  position: relative;
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* One faint ambient glow, not a colorful blob mesh — just enough that the
+   glass panels have something to catch and bend as content scrolls under them. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -15%;
+  z-index: -1;
+  background: radial-gradient(45% 40% at 82% -5%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
+  filter: blur(80px);
+  pointer-events: none;
 }
 
 h1, h2, h3, p { margin: 0; }
@@ -136,18 +150,19 @@ button:active { transform: scale(.98); }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 16px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  padding: 12px 18px;
+  background: var(--grain), var(--glass-bg);
+  background-blend-mode: overlay, normal;
+  backdrop-filter: blur(28px) saturate(2.1);
+  -webkit-backdrop-filter: blur(28px) saturate(2.1);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--glass-highlight);
 }
 
 .brand {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -.005em;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.02em;
   white-space: nowrap;
   color: var(--text);
 }
@@ -174,13 +189,13 @@ button:active { transform: scale(.98); }
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 6px 9px;
+  border-radius: 999px;
+  padding: 7px 10px;
   cursor: pointer;
   line-height: 1;
   font-size: 15px;
 }
-.icon-btn:hover { background: var(--surface-alt); }
+.icon-btn:hover { background: var(--surface-alt); transform: scale(1.06); }
 
 #menu-toggle { display: none; }
 
@@ -199,13 +214,14 @@ button:active { transform: scale(.98); }
    Notion's plain-text nav rhythm, on a frosted panel instead of a flat one. */
 .sidebar {
   position: sticky;
-  top: 74px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  top: 78px;
+  background: var(--grain), var(--glass-bg);
+  background-blend-mode: overlay, normal;
+  backdrop-filter: blur(28px) saturate(2.1);
+  -webkit-backdrop-filter: blur(28px) saturate(2.1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 10px;
+  padding: 12px;
   box-shadow: var(--shadow), var(--glass-highlight);
 }
 
@@ -281,16 +297,16 @@ button:active { transform: scale(.98); }
 .project-row:focus-within .row-actions { display: flex; }
 
 /* ---- main: Notion-plain content ----------------------------------------- */
-.main-head { margin-bottom: 12px; }
-#view-title { font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
-.view-summary { color: var(--text-muted); font-size: 13px; margin-top: 3px; }
+.main-head { margin-bottom: 14px; }
+#view-title { font-size: 32px; font-weight: 800; letter-spacing: -.025em; }
+.view-summary { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 
 .new-task {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px;
-  margin-bottom: 16px;
+  padding: 12px;
+  margin-bottom: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -299,33 +315,34 @@ button:active { transform: scale(.98); }
 
 .new-task input,
 .new-task select {
-  padding: 6px 10px;
+  padding: 7px 11px;
   background: var(--surface-alt);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 
 .primary-btn {
-  padding: 6px 14px;
+  padding: 8px 18px;
   background: var(--accent);
   color: var(--accent-contrast);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-.primary-btn:hover { filter: brightness(1.06); }
+.primary-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
 .btn-secondary {
-  padding: 6px 13px;
+  padding: 8px 16px;
   background: var(--surface-alt);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
 }
-.btn-secondary:hover { background: var(--surface); }
+.btn-secondary:hover { background: var(--surface); transform: translateY(-1px); }
 
 /* ---- task list ------------------------------------------------------- */
 .group-heading {
@@ -351,7 +368,8 @@ button:active { transform: scale(.98); }
 .task-list .task:first-child { border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }
 .task-list .task:last-child { border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
 .task-list .task + .task { border-top: 0; }
-.task:hover { background: var(--surface-alt); }
+.task { transition: background-color .15s var(--ease), opacity .15s var(--ease), box-shadow .2s var(--ease); }
+.task:hover { background: var(--surface-alt); box-shadow: var(--shadow); position: relative; z-index: 1; }
 .task.prio-high .task-title::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--high); margin-right: 7px; vertical-align: middle; }
 .task.prio-low .task-title::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--low); margin-right: 7px; vertical-align: middle; }
 .task.is-done { opacity: .5; }
@@ -407,21 +425,22 @@ button:active { transform: scale(.98); }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 22px;
+  bottom: 24px;
   transform: translateX(-50%);
   z-index: 40;
   display: flex;
   align-items: center;
   gap: 14px;
   max-width: calc(100vw - 24px);
-  padding: 9px 18px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  padding: 10px 20px;
+  background: var(--grain), var(--glass-bg);
+  background-blend-mode: overlay, normal;
+  backdrop-filter: blur(28px) saturate(2.1);
+  -webkit-backdrop-filter: blur(28px) saturate(2.1);
   border: 1px solid var(--border);
   border-radius: 999px;
   box-shadow: var(--shadow-lg), var(--glass-highlight);
-  animation: toast-in .2s var(--ease);
+  animation: toast-in .3s var(--ease);
 }
 .toast[hidden] { display: none; }
 
@@ -480,15 +499,17 @@ button:active { transform: scale(.98); }
   color: var(--text-muted);
   font-weight: 500;
 }
-.chip:hover { background: var(--surface-alt); color: var(--text); }
+.chip { transition: background-color .15s var(--ease), color .15s var(--ease), transform .15s var(--ease); }
+.chip:hover { background: var(--surface-alt); color: var(--text); transform: translateY(-1px); }
 .chip[aria-current="true"] {
   background: var(--glass-bg);
-  backdrop-filter: blur(12px) saturate(1.8);
-  -webkit-backdrop-filter: blur(12px) saturate(1.8);
+  backdrop-filter: blur(16px) saturate(2.1);
+  -webkit-backdrop-filter: blur(16px) saturate(2.1);
   border-color: var(--border);
   color: var(--text);
   font-weight: 600;
   box-shadow: var(--shadow), var(--glass-highlight);
+  transform: translateY(-1px);
 }
 
 .chip-badge {
@@ -526,7 +547,7 @@ button:active { transform: scale(.98); }
   gap: 10px;
   max-width: 480px;
 }
-.school-login h2 { flex: 1 0 100%; font-size: 20px; font-weight: 700; }
+.school-login h2 { flex: 1 0 100%; font-size: 22px; font-weight: 800; letter-spacing: -.015em; }
 .school-login p { flex: 1 0 100%; margin: 0; }
 .school-login input {
   flex: 1 1 200px;
@@ -538,7 +559,7 @@ button:active { transform: scale(.98); }
 
 /* ---- week grid -------------------------------------------------------- */
 .week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.week-nav h2 { flex: 1; font-size: 18px; font-weight: 700; }
+.week-nav h2 { flex: 1; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
 
 .week-highlights { display: flex; gap: 8px; margin-bottom: 10px; }
 
@@ -619,7 +640,10 @@ button:active { transform: scale(.98); }
   transition: background-color .12s var(--ease);
 }
 .subject-card strong { font-size: 14.5px; font-weight: 600; }
-.subject-card:hover { background: var(--surface-alt); }
+.subject-card {
+  transition: background-color .15s var(--ease), transform .2s var(--ease), box-shadow .2s var(--ease);
+}
+.subject-card:hover { background: var(--surface-alt); transform: translateY(-3px) scale(1.01); box-shadow: var(--shadow-lg); }
 
 .note-form, .upload-form, .search-form {
   display: flex;
@@ -645,7 +669,9 @@ button:active { transform: scale(.98); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  transition: box-shadow .2s var(--ease), transform .2s var(--ease);
 }
+.note-card:hover, .search-hit:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
 .note-card h4, .search-hit h4 { font-size: 14.5px; font-weight: 600; margin-bottom: 4px; }
 .note-card p, .search-hit p { white-space: pre-wrap; margin: 4px 0; }
 .note-actions { display: flex; gap: 12px; margin-top: 8px; }
@@ -698,11 +724,13 @@ button:active { transform: scale(.98); }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease);
 }
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
 .stat-icon {
   display: flex;
@@ -724,7 +752,7 @@ button:active { transform: scale(.98); }
 
 /* ---- flashcard review: the one place glass gets to be dramatic --------- */
 .review-section { display: flex; flex-direction: column; align-items: center; text-align: center; }
-.review-section > h2 { align-self: flex-start; font-size: 18px; font-weight: 700; }
+.review-section > h2 { align-self: flex-start; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
 .review-section > .muted { align-self: flex-start; }
 
 .flip-card {
@@ -756,15 +784,17 @@ button:active { transform: scale(.98); }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 26px;
   backface-visibility: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px) saturate(1.8);
-  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  background: var(--grain), var(--glass-bg);
+  background-blend-mode: overlay, normal;
+  backdrop-filter: blur(30px) saturate(2.2);
+  -webkit-backdrop-filter: blur(30px) saturate(2.2);
   box-shadow: var(--shadow-lg), var(--glass-highlight), inset 0 0 0 1px color-mix(in srgb, var(--card-accent) 30%, transparent);
-  font-size: 18px;
+  font-size: 19px;
+  font-weight: 500;
   line-height: 1.4;
   overflow-y: auto;
 }
