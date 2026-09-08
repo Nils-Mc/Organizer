@@ -47,6 +47,120 @@ export function parseTags(rawTitle) {
   return { title, tags };
 }
 
+const WEEKDAYS = ['sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag'];
+
+const PRIORITY_WORDS = {
+  hoch: 'high', high: 'high', wichtig: 'high',
+  normal: 'normal', mittel: 'normal',
+  niedrig: 'low', low: 'low', egal: 'low',
+};
+
+const pad = (n) => String(n).padStart(2, '0');
+const isoOf = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+/**
+ * Read a typed line like `Mathe lernen morgen 18:00 #schule !hoch` into the
+ * fields it describes, returning the title with those tokens removed.
+ *
+ * `today` is a parameter, not `new Date()`, for the same reason it is
+ * everywhere else here: a parser whose result depends on when the test runs is
+ * a parser nobody can test.
+ *
+ * Ambiguity worth knowing about: `12.09.` and `12:09` both look like a pair of
+ * numbers. A trailing dot makes it a date, a colon makes it a time, and
+ * `18.00` is read as a time only because month 0 does not exist.
+ */
+export function parseQuickAdd(rawText, today = new Date()) {
+  let text = String(rawText || '');
+  let dueDate = null;
+  let dueTime = null;
+  let priority = null;
+
+  const cut = (pattern, handler) => {
+    let used = false;
+    text = text.replace(pattern, (...args) => {
+      if (used) return args[0]; // only the first mention counts
+      const replacement = handler(...args);
+      if (replacement === null) return args[0];
+      used = true;
+      return replacement;
+    });
+  };
+
+  // Priority: !hoch / !normal / !niedrig
+  cut(/(^|\s)!([\p{L}]+)/giu, (match, lead, word) => {
+    const mapped = PRIORITY_WORDS[word.toLowerCase()];
+    if (!mapped) return null;
+    priority = mapped;
+    return lead;
+  });
+
+  const dayAfter = (offset) => {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    d.setDate(d.getDate() + offset);
+    return isoOf(d);
+  };
+
+  // Relative days
+  cut(/(^|\s)(heute|morgen|übermorgen)(?=\s|$)/iu, (match, lead, word) => {
+    const offsets = { heute: 0, morgen: 1, übermorgen: 2 };
+    dueDate = dayAfter(offsets[word.toLowerCase()]);
+    return lead;
+  });
+
+  // Weekday names resolve to the next such day; naming today means next week,
+  // because "montag" on a Monday almost never means "in the next few minutes".
+  if (!dueDate) {
+    cut(/(^|\s)(sonntag|montag|dienstag|mittwoch|donnerstag|freitag|samstag)(?=\s|$)/iu,
+      (match, lead, word) => {
+        const target = WEEKDAYS.indexOf(word.toLowerCase());
+        const ahead = (target - today.getDay() + 7) % 7 || 7;
+        dueDate = dayAfter(ahead);
+        return lead;
+      });
+  }
+
+  // Explicit dates: 12.09. / 12.9. / 12.09.2026
+  if (!dueDate) {
+    cut(/(^|\s)(\d{1,2})\.(\d{1,2})\.(\d{4})?(?=\s|$)/u, (match, lead, d, m, y) => {
+      const day = Number(d);
+      const month = Number(m);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      const year = y ? Number(y) : today.getFullYear();
+      const date = new Date(year, month - 1, day);
+      if (date.getMonth() !== month - 1) return null; // e.g. 31.02.
+      // A bare day/month that already passed this year means next year.
+      if (!y && isoOf(date) < isoOf(today)) date.setFullYear(year + 1);
+      dueDate = isoOf(date);
+      return lead;
+    });
+  }
+
+  // Times: 18:00 / 18.00 / 18h
+  cut(/(^|\s)(\d{1,2})(?::|\.)(\d{2})(?=\s|$)/u, (match, lead, h, m) => {
+    const time = `${pad(Number(h))}:${m}`;
+    if (!isClockTime(time)) return null;
+    dueTime = time;
+    return lead;
+  });
+  if (!dueTime) {
+    cut(/(^|\s)(\d{1,2})\s?h(?=\s|$)/iu, (match, lead, h) => {
+      const time = `${pad(Number(h))}:00`;
+      if (!isClockTime(time)) return null;
+      dueTime = time;
+      return lead;
+    });
+  }
+
+  // A time needs a day to sit on, so a bare "18:00" means today.
+  if (dueTime && !dueDate) dueDate = isoOf(today);
+
+  // Tags last, reusing the existing parser rather than a second copy of it.
+  const { title, tags } = parseTags(text);
+
+  return { title, tags, dueDate, dueTime, priority };
+}
+
 /**
  * Coerce anything loaded from storage or an import file into a valid state.
  * Unknown fields are dropped rather than trusted, and malformed records are
@@ -195,9 +309,12 @@ export class Store {
 
   getTask(id) { return this.state.tasks.find((t) => t.id === id) || null; }
 
-  addTask({ title, projectId = null, dueDate = null, dueTime = null, priority = 'normal', notes = '' }) {
+  addTask({ title, projectId = null, dueDate = null, dueTime = null, priority = 'normal', notes = '', tags = [] }) {
     const parsed = parseTags(title);
     if (!parsed.title) return null;
+    // Tags can arrive already extracted (the quick-add parser strips them out
+    // of the title before this point), so both sources are merged.
+    const allTags = [...new Set([...parsed.tags, ...tags.filter((t) => typeof t === 'string' && t)])];
     const now = new Date().toISOString();
     const task = {
       id: uid(),
@@ -209,7 +326,7 @@ export class Store {
       // A time without a day has nothing to anchor to, so it is dropped.
       dueTime: dueDate && isClockTime(dueTime) ? dueTime : null,
       priority: PRIORITIES.includes(priority) ? priority : 'normal',
-      tags: parsed.tags,
+      tags: allTags,
       order: this.state.tasks.length,
       createdAt: now,
       updatedAt: now,

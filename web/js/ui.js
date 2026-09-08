@@ -1,7 +1,7 @@
 /**
  * Rendering and DOM event wiring. The only module that touches the document.
  */
-import { PRIORITIES } from './store.js';
+import { PRIORITIES, parseQuickAdd } from './store.js';
 import {
   filterByView, sortTasks, groupByDue, matchesSearch,
   countsFor, formatDue, toISODate, dayPlan, formatDayHeading,
@@ -73,11 +73,15 @@ export class UI {
 
     d.form.addEventListener('submit', (event) => {
       event.preventDefault();
+      // What was typed wins over the pickers, which stay as the explicit way
+      // to set a field the text did not mention.
+      const parsed = parseQuickAdd(d.title.value, this.today);
       const task = this.store.addTask({
-        title: d.title.value,
-        dueDate: d.due.value || null,
-        dueTime: d.time.value || null,
-        priority: d.priority.value,
+        title: parsed.title,
+        tags: parsed.tags,
+        dueDate: parsed.dueDate || d.due.value || null,
+        dueTime: parsed.dueTime || d.time.value || null,
+        priority: parsed.priority || d.priority.value,
         projectId: d.project.value || null,
       });
       if (!task) return;
