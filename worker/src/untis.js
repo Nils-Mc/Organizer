@@ -133,7 +133,10 @@ export class UntisClient {
     this.school = config.school;
     this.user = config.user;
     this.password = config.password;
-    this.fetch = config.fetch || globalThis.fetch;
+    // globalThis.fetch's native implementation is bound to that global — passed
+    // around and called as `this.fetch(...)` unbound, Workers throws "Illegal
+    // invocation" rather than silently working like it does in Node.
+    this.fetch = config.fetch || globalThis.fetch.bind(globalThis);
     this.sessionId = null;
     this.personId = null;
     this.personType = null;
@@ -251,14 +254,22 @@ export class UntisClient {
   }
 
   async getExams(from, to) {
-    const data = await this.rest('exams', {
-      startDate: encodeDate(from),
-      endDate: encodeDate(to),
-      klasseId: this.klasseId ?? 0,
-      withGrades: false,
-    });
-    const raw = (data && data.data) || data || {};
-    return raw.exams || [];
+    try {
+      const data = await this.rest('exams', {
+        startDate: encodeDate(from),
+        endDate: encodeDate(to),
+        klasseId: this.klasseId ?? 0,
+        withGrades: false,
+      });
+      const raw = (data && data.data) || data || {};
+      return raw.exams || [];
+    } catch (error) {
+      // Some WebUntis accounts (student logins in particular) don't have rights
+      // on this endpoint at all and get a flat 403 — that is not a sync failure,
+      // just an account without exam data to sync.
+      if (error instanceof UntisError && error.code === 403) return [];
+      throw error;
+    }
   }
 }
 
