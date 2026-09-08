@@ -645,6 +645,220 @@ button:active { transform: scale(.98); }
 .group-heading.is-overdue::before { background: var(--danger); opacity: 1; }
 .group-heading.is-overdue { color: var(--danger); }
 
+/* ---- filter chips inside "Aufgaben" --------------------------------------- */
+.filter-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+
+/* ---- calendar -------------------------------------------------------------- */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-weekday {
+  padding: 4px 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 74px;
+  padding: 6px 7px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.calendar-day.is-today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.calendar-date { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.calendar-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.calendar-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--normal); }
+.calendar-dot.prio-high { background: var(--danger); }
+.calendar-dot.prio-low { background: var(--low); }
+.calendar-dot.is-done { background: none; box-shadow: inset 0 0 0 1.5px var(--normal); }
+.calendar-more { font-size: 10px; color: var(--text-muted); }
+
+.calendar-lessons { margin-top: auto; font-size: 10.5px; color: var(--text-muted); }
+
+/* ---- tags ------------------------------------------------------------------ */
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.tag-chip:hover { background: var(--surface-alt); transform: translateY(-1px); }
+.tag-count { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
+
+/* ---- statistics ------------------------------------------------------------ */
+.chart {
+  margin: 18px 0;
+  padding: 14px 16px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.chart-title { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; }
+
+.chart-plot {
+  display: flex;
+  align-items: flex-end;
+  /* A surface-coloured gap between bars rather than a gap in the data. */
+  gap: 4px;
+  height: 108px;
+}
+
+.chart-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+
+.chart-bar {
+  width: 100%;
+  min-height: 2px;
+  background: var(--accent);
+  /* Rounded only at the data end; the baseline end stays square so the bar
+     reads as anchored rather than floating. */
+  border-radius: 4px 4px 0 0;
+}
+.chart-bar.is-zero { background: var(--border); min-height: 2px; }
+
+.chart-value {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 3px;
+}
+
+.chart-tick {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-bars { display: flex; flex-direction: column; gap: 8px; }
+.stat-bar-row { display: flex; align-items: center; gap: 10px; }
+.stat-bar-label { flex: 0 0 32%; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-bar-track { flex: 1; height: 8px; background: var(--surface-alt); border-radius: 999px; overflow: hidden; }
+.stat-bar-fill { display: block; height: 100%; border-radius: 999px; }
+.stat-bar-value { flex: none; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+/* ---- settings --------------------------------------------------------------- */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+
+.setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.setting-label { font-size: 14px; }
+.setting-hint { font-size: 12px; color: var(--text-muted); }
+
+.setting-row select {
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.btn-danger {
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+
+.swatches { display: flex; gap: 6px; flex: none; }
+.swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.is-default { background: linear-gradient(135deg, #2383e2, #6940a5); }
+.swatch.is-active { border-color: var(--text); }
+
+/* A checkbox drawn as a switch; the real input stays for keyboard and a11y. */
+.switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
+.switch input {
+  position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer;
+}
+.switch-track {
+  width: 40px;
+  height: 23px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  transition: background-color .15s var(--ease);
+}
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: transform .15s var(--ease);
+}
+.switch input:checked + .switch-track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .switch-track::after { transform: translateX(17px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.conn-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface-alt);
+}
+.conn-badge.is-on { background: color-mix(in srgb, var(--low) 14%, transparent); color: var(--low); }
+
+/* ---- density and motion preferences ------------------------------------------ */
+body.is-compact .task { padding: 5px 10px; }
+body.is-compact .task-meta { margin-top: 2px; }
+body.is-compact .task-list { gap: 0; }
+body.is-compact .timeline-button { padding: 4px 8px; }
+
+body.no-animations *, body.no-animations *::before, body.no-animations *::after {
+  animation-duration: .001s !important;
+  transition-duration: .001s !important;
+}
+
 /* ---- command palette / sheets ---------------------------------------------
    Native <dialog> so focus trapping, Esc and the backdrop come from the
    platform instead of being reimplemented, usually worse. */

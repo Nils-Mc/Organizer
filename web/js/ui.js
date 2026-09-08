@@ -1,21 +1,42 @@
 /**
  * Rendering and DOM event wiring. The only module that touches the document.
  */
-import { PRIORITIES, parseQuickAdd } from './store.js';
+import { PRIORITIES, parseQuickAdd, SCHEMA_VERSION } from './store.js';
 import {
   filterByView, sortTasks, groupByDue, matchesSearch,
   countsFor, formatDue, toISODate, dayPlan, formatDayHeading,
 } from './filters.js';
 
 const VIEWS = [
-  { id: 'today', label: 'Heute', icon: '☀' },
-  { id: 'upcoming', label: 'Demnächst', icon: '▸' },
-  { id: 'all', label: 'Alle offenen', icon: '≡' },
-  { id: 'inbox', label: 'Eingang', icon: '✉' },
-  { id: 'completed', label: 'Erledigt', icon: '✓' },
+  { id: 'today', label: 'Heute', icon: '🏠' },
+  { id: 'tasks', label: 'Aufgaben', icon: '📋' },
+  { id: 'calendar', label: 'Kalender', icon: '📅' },
+  { id: 'tags', label: 'Tags', icon: '🔖' },
+  { id: 'stats', label: 'Statistik', icon: '📊' },
+  { id: 'settings', label: 'Einstellungen', icon: '⚙️' },
 ];
 
+/** The old top-level views, now filters inside "Aufgaben". */
+const TASK_FILTERS = [
+  { id: 'all', label: 'Alle offenen' },
+  { id: 'upcoming', label: 'Demnächst' },
+  { id: 'inbox', label: 'Eingang' },
+  { id: 'completed', label: 'Erledigt' },
+];
+
+/** Views that replace the task list entirely, quick-add and sorting included. */
+const PANEL_VIEWS = new Set(['calendar', 'tags', 'stats', 'settings']);
+
 const el = (id) => document.getElementById(id);
+
+/**
+ * A chosen accent overrides the token in both themes at once, since it is set
+ * on the root element and the theme blocks only define the default.
+ */
+export function applyAccent(color) {
+  if (color) document.documentElement.style.setProperty('--accent', color);
+  else document.documentElement.style.removeProperty('--accent');
+}
 
 /**
  * Score a command against a typed query using subsequence matching: the typed
@@ -138,7 +159,7 @@ export class UI {
       // the view here needs its own render to take effect.
       const view = this.resolveView();
       if (!filterByView([task], view, this.today).length) {
-        this.prefs.set('view', 'all');
+        this.prefs.set('view', 'tasks');
         this.render();
       }
       this.announce(`${task.title} hinzugefügt`);
@@ -237,8 +258,8 @@ export class UI {
       this.prefs.set('theme', next);
     });
 
-    el('export-btn').addEventListener('click', () => this.exportData());
-    el('import-btn').addEventListener('click', () => el('import-file').click());
+    // Export and import moved into the settings panel, which wires its own
+    // buttons; only the hidden file input is shared and lives on permanently.
     el('import-file').addEventListener('change', (e) => this.importData(e));
 
     d.toastAction.addEventListener('click', () => this.performUndo());
@@ -444,7 +465,7 @@ export class UI {
       const project = this.store.getProject(id);
       if (project && confirm(`"${project.name}" löschen? Die Aufgaben wandern in den Eingang.`)) {
         this.store.deleteProject(id);
-        if (this.prefs.get('view') === `project:${id}`) this.prefs.set('view', 'all');
+        if (this.prefs.get('view') === `project:${id}`) this.prefs.set('view', 'tasks');
         this.render();
       }
     }
@@ -455,6 +476,42 @@ export class UI {
     const timelineToggle = event.target.closest('[data-toggle]');
     if (timelineToggle) {
       this.toggleWithUndo(timelineToggle.dataset.toggle);
+      return;
+    }
+
+    const filterChip = event.target.closest('[data-task-filter]');
+    if (filterChip) {
+      this.prefs.set('taskFilter', filterChip.dataset.taskFilter);
+      this.render();
+      return;
+    }
+
+    const tagChip = event.target.closest('[data-tag-search]');
+    if (tagChip) {
+      this.dom.search.value = `#${tagChip.dataset.tagSearch}`;
+      this.prefs.set('view', 'tasks');
+      this.prefs.set('taskFilter', 'all');
+      this.render();
+      return;
+    }
+
+    const calendarNav = event.target.closest('[data-calendar]');
+    if (calendarNav) {
+      const cursor = this.calendarCursor || new Date();
+      const step = { prev: -1, next: 1 }[calendarNav.dataset.calendar];
+      this.calendarCursor = step === undefined
+        ? new Date(this.today.getFullYear(), this.today.getMonth(), 1)
+        : new Date(cursor.getFullYear(), cursor.getMonth() + step, 1);
+      this.render();
+      return;
+    }
+
+    const swatch = event.target.closest('[data-accent]');
+    if (swatch) {
+      const color = swatch.dataset.accent;
+      this.prefs.set('accent', color);
+      applyAccent(color);
+      this.render();
       return;
     }
 
@@ -583,22 +640,63 @@ export class UI {
     this.renderSidebar(view, counts);
     this.renderProjectPicker();
 
+    // Panels are not lists of tasks, so the tools that act on a list step aside.
+    const isPanel = PANEL_VIEWS.has(view);
+    this.dom.form.hidden = isPanel;
+    this.dom.sort.closest('.sort-wrap').hidden = isPanel;
+
+    this.dom.viewTitle.textContent = this.viewLabel(view);
+
+    if (isPanel) {
+      this.dom.viewSummary.textContent = this.panelSummary(view, counts);
+      this.dom.container.textContent = '';
+      if (view === 'calendar') this.renderCalendar(this.dom.container, today);
+      if (view === 'tags') this.renderTags(this.dom.container);
+      if (view === 'stats') this.renderStats(this.dom.container, today);
+      if (view === 'settings') this.renderSettings(this.dom.container);
+      return;
+    }
+
+    // "Aufgaben" carries the filter that used to be four separate sidebar entries.
+    const effective = view === 'tasks' ? (this.prefs.get('taskFilter') || 'all') : view;
     const query = this.dom.search.value;
     const visible = sortTasks(
-      filterByView(state.tasks, view, today).filter((t) => matchesSearch(t, query)),
+      filterByView(state.tasks, effective, today).filter((t) => matchesSearch(t, query)),
       this.dom.sort.value
     );
 
-    this.dom.viewTitle.textContent = this.viewLabel(view);
     this.dom.viewSummary.textContent = this.summaryText(visible.length, query, counts, view);
 
     this.renderTasks(visible, view, today);
   }
 
-  /** Fall back to 'all' if the stored view points at a deleted project. */
+  panelSummary(view, counts) {
+    if (view === 'tags') {
+      const total = new Set(this.store.getTasks().flatMap((t) => t.tags)).size;
+      return `${total} ${total === 1 ? 'Tag' : 'Tags'} vergeben`;
+    }
+    if (view === 'stats') return `${counts.completed} erledigt insgesamt`;
+    if (view === 'calendar') return 'Aufgaben und Unterricht im Monatsüberblick';
+    return 'Darstellung, Daten, Verbindung und Tastenkürzel';
+  }
+
+  /**
+   * Resolve the stored view, repairing the two ways it can go stale: a project
+   * that has since been deleted, and the old top-level views that are now
+   * filters inside "Aufgaben" — a session stored before that change would
+   * otherwise land on a view the sidebar no longer offers.
+   */
   resolveView() {
-    const view = this.prefs.get('view') || 'today';
-    if (view.startsWith('project:') && !this.store.getProject(view.slice(8))) return 'all';
+    let view = this.prefs.get('view') || 'today';
+
+    const legacy = TASK_FILTERS.find((f) => f.id === view);
+    if (legacy) {
+      this.prefs.set('taskFilter', legacy.id);
+      this.prefs.set('view', 'tasks');
+      view = 'tasks';
+    }
+
+    if (view.startsWith('project:') && !this.store.getProject(view.slice(8))) return 'tasks';
     return view;
   }
 
@@ -732,6 +830,18 @@ export class UI {
       this.renderDayPlan(container, today);
       this.renderLookahead(container, today);
       return;
+    }
+
+    if (view === 'tasks') {
+      const active = this.prefs.get('taskFilter') || 'all';
+      const row = document.createElement('div');
+      row.className = 'filter-row';
+      for (const filter of TASK_FILTERS) {
+        const chip = this.button('chip', filter.label, { taskFilter: filter.id });
+        chip.setAttribute('aria-current', String(filter.id === active));
+        row.appendChild(chip);
+      }
+      container.appendChild(row);
     }
 
     if (!tasks.length) {
@@ -913,6 +1023,565 @@ export class UI {
       }
       container.appendChild(ul);
     }
+  }
+
+  // -- calendar ----------------------------------------------------------
+  renderCalendar(container, today) {
+    const cursor = this.calendarCursor || new Date(today.getFullYear(), today.getMonth(), 1);
+    this.calendarCursor = cursor;
+    const mondayFirst = (this.prefs.get('weekStart') || 'monday') === 'monday';
+
+    const nav = document.createElement('div');
+    nav.className = 'week-nav';
+    const back = this.button('icon-btn', '‹', { calendar: 'prev' });
+    back.setAttribute('aria-label', 'Vorheriger Monat');
+    const forward = this.button('icon-btn', '›', { calendar: 'next' });
+    forward.setAttribute('aria-label', 'Nächster Monat');
+    const heading = document.createElement('h2');
+    heading.textContent = cursor.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+    const now = this.button('link-btn', 'Heute', { calendar: 'today' });
+    nav.append(back, heading, forward, now);
+    container.appendChild(nav);
+
+    const names = mondayFirst
+      ? ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+      : ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+    const grid = document.createElement('div');
+    grid.className = 'calendar-grid';
+    for (const name of names) {
+      const cell = document.createElement('div');
+      cell.className = 'calendar-weekday';
+      cell.textContent = name;
+      grid.appendChild(cell);
+    }
+
+    // Lead with enough blanks that the 1st lands under the right weekday.
+    const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const shift = mondayFirst ? (first.getDay() + 6) % 7 : first.getDay();
+    for (let i = 0; i < shift; i++) {
+      grid.appendChild(document.createElement('div'));
+    }
+
+    const days = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+    const todayIso = toISODate(today);
+    for (let day = 1; day <= days; day++) {
+      const date = new Date(cursor.getFullYear(), cursor.getMonth(), day);
+      const iso = toISODate(date);
+      const cell = document.createElement('div');
+      cell.className = `calendar-day${iso === todayIso ? ' is-today' : ''}`;
+
+      const number = document.createElement('span');
+      number.className = 'calendar-date';
+      number.textContent = String(day);
+      cell.appendChild(number);
+
+      const tasks = this.store.getTasks().filter((t) => t.dueDate === iso);
+      const lessons = this.lessonsForDay(iso) || [];
+
+      const dots = document.createElement('div');
+      dots.className = 'calendar-dots';
+      // One dot per task, capped: past a handful the count is what matters,
+      // not a row of dots nobody counts.
+      for (const task of tasks.slice(0, 4)) {
+        const dot = document.createElement('span');
+        dot.className = `calendar-dot prio-${task.priority}${task.done ? ' is-done' : ''}`;
+        dot.title = task.title;
+        dots.appendChild(dot);
+      }
+      if (tasks.length > 4) {
+        const more = document.createElement('span');
+        more.className = 'calendar-more';
+        more.textContent = `+${tasks.length - 4}`;
+        dots.appendChild(more);
+      }
+      cell.appendChild(dots);
+
+      if (lessons.length) {
+        const badge = document.createElement('span');
+        badge.className = 'calendar-lessons';
+        badge.textContent = `${lessons.length} Std.`;
+        badge.title = lessons.map((l) => l.subject_name).filter(Boolean).join(', ');
+        cell.appendChild(badge);
+      }
+
+      cell.title = tasks.length
+        ? tasks.map((t) => t.title).join('\n')
+        : 'Nichts geplant';
+      grid.appendChild(cell);
+    }
+
+    container.appendChild(grid);
+  }
+
+  // -- tags --------------------------------------------------------------
+  renderTags(container) {
+    const counts = new Map();
+    for (const task of this.store.getTasks()) {
+      for (const tag of task.tags) {
+        const entry = counts.get(tag) || { open: 0, total: 0 };
+        entry.total += 1;
+        if (!task.done) entry.open += 1;
+        counts.set(tag, entry);
+      }
+    }
+
+    if (!counts.size) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = 'Noch keine Tags. Schreibe #schule in eine Aufgabe.';
+      container.appendChild(empty);
+      return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'tag-cloud';
+    const sorted = [...counts.entries()].sort((a, b) => b[1].total - a[1].total);
+    for (const [tag, entry] of sorted) {
+      const button = this.button('tag-chip', '', { tagSearch: tag });
+      const name = document.createElement('span');
+      name.textContent = `#${tag}`;
+      const count = document.createElement('span');
+      count.className = 'tag-count';
+      count.textContent = entry.open ? `${entry.open} offen` : `${entry.total} erledigt`;
+      button.append(name, count);
+      button.title = `Aufgaben mit #${tag} suchen`;
+      list.appendChild(button);
+    }
+    container.appendChild(list);
+  }
+
+  // -- statistics --------------------------------------------------------
+  renderStats(container, today) {
+    const tasks = this.store.getTasks();
+    const done = tasks.filter((t) => t.done && t.completedAt);
+    const iso = toISODate(today);
+
+    const dayOf = (task) => task.completedAt.slice(0, 10);
+    const doneToday = done.filter((t) => dayOf(t) === iso).length;
+
+    // Last 14 days, oldest first.
+    const days = [];
+    for (let back = 13; back >= 0; back--) {
+      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+      const key = toISODate(date);
+      days.push({ date, key, count: done.filter((t) => dayOf(t) === key).length });
+    }
+    const thisWeek = days.slice(-7).reduce((sum, d) => sum + d.count, 0);
+
+    // Streak: consecutive days up to today with at least one completion.
+    let streak = 0;
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (!days[i].count) break;
+      streak += 1;
+    }
+
+    const rate = tasks.length ? Math.round((done.length / tasks.length) * 100) : 0;
+
+    const row = document.createElement('div');
+    row.className = 'stat-row';
+    for (const [icon, value, label] of [
+      ['✅', doneToday, doneToday === 1 ? 'heute erledigt' : 'heute erledigt'],
+      ['📅', thisWeek, 'in 7 Tagen erledigt'],
+      ['🔥', streak, streak === 1 ? 'Tag in Folge' : 'Tage in Folge'],
+      ['📈', `${rate}%`, 'aller Aufgaben erledigt'],
+    ]) {
+      const card = document.createElement('div');
+      card.className = 'stat-card';
+      const bubble = document.createElement('span');
+      bubble.className = 'stat-icon';
+      bubble.textContent = icon;
+      const body = document.createElement('div');
+      body.className = 'stat-body';
+      const strong = document.createElement('strong');
+      strong.className = 'stat-value';
+      strong.textContent = String(value);
+      const small = document.createElement('span');
+      small.className = 'stat-label';
+      small.textContent = label;
+      body.append(strong, small);
+      card.append(bubble, body);
+      row.appendChild(card);
+    }
+    container.appendChild(row);
+
+    container.appendChild(this.completionChart(days));
+
+    // Per project, so the numbers point at something actionable.
+    const projects = this.store.getProjects()
+      .map((p) => ({
+        project: p,
+        open: tasks.filter((t) => !t.done && t.projectId === p.id).length,
+      }))
+      .filter((entry) => entry.open)
+      .sort((a, b) => b.open - a.open);
+
+    if (projects.length) {
+      const heading = document.createElement('h3');
+      heading.className = 'group-heading';
+      heading.textContent = 'Offen nach Projekt';
+      container.appendChild(heading);
+
+      const list = document.createElement('div');
+      list.className = 'stat-bars';
+      const max = projects[0].open;
+      for (const entry of projects) {
+        const line = document.createElement('div');
+        line.className = 'stat-bar-row';
+
+        const name = document.createElement('span');
+        name.className = 'stat-bar-label';
+        name.textContent = entry.project.name;
+
+        const track = document.createElement('span');
+        track.className = 'stat-bar-track';
+        const fill = document.createElement('span');
+        fill.className = 'stat-bar-fill';
+        fill.style.width = `${Math.round((entry.open / max) * 100)}%`;
+        fill.style.background = entry.project.color;
+        track.appendChild(fill);
+
+        const value = document.createElement('span');
+        value.className = 'stat-bar-value';
+        value.textContent = String(entry.open);
+
+        line.append(name, track, value);
+        list.appendChild(line);
+      }
+      container.appendChild(list);
+    }
+  }
+
+  /**
+   * Completions per day for a fortnight. One series, so the heading names it
+   * and no legend is needed; the value is direct-labelled only on the best day
+   * rather than on every bar, and every bar carries its own accessible text.
+   */
+  completionChart(days) {
+    const figure = document.createElement('figure');
+    figure.className = 'chart';
+
+    const caption = document.createElement('figcaption');
+    caption.className = 'chart-title';
+    caption.textContent = 'Erledigt pro Tag · letzte 14 Tage';
+    figure.appendChild(caption);
+
+    const max = Math.max(1, ...days.map((d) => d.count));
+    const best = days.reduce((a, b) => (b.count > a.count ? b : a), days[0]);
+
+    const plot = document.createElement('div');
+    plot.className = 'chart-plot';
+    plot.setAttribute('role', 'img');
+    plot.setAttribute('aria-label',
+      `Erledigte Aufgaben pro Tag: ${days.map((d) => `${d.date.getDate()}.: ${d.count}`).join(', ')}`);
+
+    for (const day of days) {
+      const column = document.createElement('div');
+      column.className = 'chart-col';
+      column.title = `${day.date.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })}: ${day.count}`;
+
+      if (day.count && day === best) {
+        const label = document.createElement('span');
+        label.className = 'chart-value';
+        label.textContent = String(day.count);
+        column.appendChild(label);
+      }
+
+      const bar = document.createElement('span');
+      bar.className = `chart-bar${day.count ? '' : ' is-zero'}`;
+      bar.style.height = `${Math.round((day.count / max) * 100)}%`;
+      column.appendChild(bar);
+
+      const tick = document.createElement('span');
+      tick.className = 'chart-tick';
+      // Only every other label, so a fortnight of ticks does not collide.
+      tick.textContent = day.date.getDate() % 2 === 0 ? String(day.date.getDate()) : '';
+      column.appendChild(tick);
+
+      plot.appendChild(column);
+    }
+
+    figure.appendChild(plot);
+    return figure;
+  }
+
+  // -- settings ----------------------------------------------------------
+  /** A titled block of setting rows. */
+  settingsGroup(title) {
+    const section = document.createElement('section');
+    section.className = 'section-card';
+    const heading = document.createElement('h3');
+    heading.className = 'group-heading';
+    heading.textContent = title;
+    section.appendChild(heading);
+    return section;
+  }
+
+  /** One labelled row: description on the left, control on the right. */
+  settingsRow(section, label, control, hint) {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+
+    const text = document.createElement('div');
+    text.className = 'setting-text';
+    const name = document.createElement('span');
+    name.className = 'setting-label';
+    name.textContent = label;
+    text.appendChild(name);
+    if (hint) {
+      const small = document.createElement('span');
+      small.className = 'setting-hint';
+      small.textContent = hint;
+      text.appendChild(small);
+    }
+
+    row.append(text, control);
+    section.appendChild(row);
+    return row;
+  }
+
+  select(options, current, onChange) {
+    const select = document.createElement('select');
+    for (const [value, label] of options) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      if (value === current) option.selected = true;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  toggle(checked, onChange) {
+    const label = document.createElement('label');
+    label.className = 'switch';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    input.addEventListener('change', () => onChange(input.checked));
+    const track = document.createElement('span');
+    track.className = 'switch-track';
+    label.append(input, track);
+    return label;
+  }
+
+  renderSettings(container) {
+    // --- Darstellung
+    const look = this.settingsGroup('🎨 Darstellung');
+
+    this.settingsRow(look, 'Theme',
+      this.select([['system', 'System'], ['light', 'Hell'], ['dark', 'Dunkel']],
+        this.prefs.get('theme') || 'system',
+        (value) => {
+          if (value === 'system') delete document.documentElement.dataset.theme;
+          else document.documentElement.dataset.theme = value;
+          this.prefs.set('theme', value === 'system' ? '' : value);
+        }),
+      'Der Schnellumschalter oben rechts bleibt zusätzlich.');
+
+    const swatches = document.createElement('div');
+    swatches.className = 'swatches';
+    const accents = [
+      ['', 'Standard'], ['#2383e2', 'Blau'], ['#0f9d58', 'Grün'],
+      ['#d9730d', 'Orange'], ['#e03e3e', 'Rot'], ['#6940a5', 'Violett'],
+    ];
+    for (const [color, name] of accents) {
+      const swatch = this.button('swatch', '', { accent: color });
+      swatch.title = name;
+      swatch.setAttribute('aria-label', `Akzentfarbe ${name}`);
+      if (color) swatch.style.background = color;
+      else swatch.classList.add('is-default');
+      if ((this.prefs.get('accent') || '') === color) swatch.classList.add('is-active');
+      swatches.appendChild(swatch);
+    }
+    this.settingsRow(look, 'Akzentfarbe', swatches);
+
+    this.settingsRow(look, 'Kompakte Aufgabenansicht',
+      this.toggle(!!this.prefs.get('compact'), (on) => {
+        this.prefs.set('compact', on);
+        document.body.classList.toggle('is-compact', on);
+      }),
+      'Weniger Abstand, mehr Zeilen auf einen Blick.');
+
+    this.settingsRow(look, 'Animationen',
+      this.toggle(this.prefs.get('animations') !== false, (on) => {
+        this.prefs.set('animations', on);
+        document.body.classList.toggle('no-animations', !on);
+      }));
+
+    container.appendChild(look);
+
+    // --- Daten
+    const data = this.settingsGroup('💾 Daten');
+    const dataActions = (label, hint, text, handler, className = 'btn-secondary') => {
+      const button = this.button(className, text);
+      button.addEventListener('click', handler);
+      this.settingsRow(data, label, button, hint);
+    };
+
+    dataActions('Exportieren', 'Alle Aufgaben und Projekte als JSON-Datei.',
+      'Exportieren', () => this.exportData());
+    dataActions('Importieren', 'Ersetzt den aktuellen Stand durch eine Datei.',
+      'Datei wählen', () => el('import-file').click());
+    dataActions('Backup erstellen', 'Legt eine Sicherung im Browser ab.',
+      'Sichern', () => this.createBackup());
+
+    const restore = this.button('btn-secondary', 'Wiederherstellen');
+    restore.addEventListener('click', () => this.restoreBackup());
+    const stamp = this.prefs.get('backupAt');
+    this.settingsRow(data, 'Backup wiederherstellen', restore,
+      stamp ? `Letzte Sicherung: ${new Date(stamp).toLocaleString('de-DE')}` : 'Noch keine Sicherung vorhanden.');
+
+    const wipe = this.button('btn-danger', 'Alle Daten löschen');
+    wipe.addEventListener('click', () => this.wipeEverything());
+    this.settingsRow(data, 'Alle Daten löschen',
+      wipe, 'Kann nicht rückgängig gemacht werden.');
+
+    container.appendChild(data);
+
+    // --- WebUntis
+    const school = this.settingsGroup('🏫 WebUntis');
+    const status = this.schoolStatus();
+    const badge = document.createElement('span');
+    badge.className = `conn-badge ${status.ok ? 'is-on' : 'is-off'}`;
+    badge.textContent = status.label;
+    this.settingsRow(school, 'Verbindung', badge, status.hint);
+
+    if (status.ok) {
+      const syncNow = this.button('btn-secondary', 'Jetzt synchronisieren');
+      syncNow.addEventListener('click', () => this.syncSchool());
+      this.settingsRow(school, 'Synchronisieren', syncNow,
+        'Stundenplan, Fächer und Hausaufgaben werden abgeglichen.');
+    }
+    container.appendChild(school);
+
+    // --- Ansicht & Navigation
+    const nav = this.settingsGroup('🧭 Ansicht & Navigation');
+    this.settingsRow(nav, 'Startansicht',
+      this.select(VIEWS.map((v) => [v.id, v.label]), this.prefs.get('startView') || 'today',
+        (value) => this.prefs.set('startView', value)),
+      'Womit die App nach dem Öffnen startet.');
+
+    this.settingsRow(nav, 'Seitenleiste eingeklappt starten',
+      this.toggle(!!this.prefs.get('sidebarCollapsed'), (on) => {
+        this.prefs.set('sidebarCollapsed', on);
+        this.dom.sidebar.classList.toggle('collapsed', on);
+      }));
+
+    this.settingsRow(nav, 'Wochenstart im Kalender',
+      this.select([['monday', 'Montag'], ['sunday', 'Sonntag']],
+        this.prefs.get('weekStart') || 'monday',
+        (value) => { this.prefs.set('weekStart', value); this.render(); }));
+    container.appendChild(nav);
+
+    // --- Tastenkürzel
+    const keys = this.settingsGroup('⌨️ Tastenkürzel');
+    const table = document.createElement('table');
+    table.className = 'shortcut-table';
+    const body = document.createElement('tbody');
+    for (const [combo, action] of [
+      ['N', 'Neue Aufgabe'],
+      ['/', 'Suche'],
+      ['⌘/Strg + K', 'Befehle'],
+      ['⌘/Strg + ⏎', 'Speichern'],
+      ['Esc', 'Schließen / Abbrechen'],
+      ['?', 'Diese Übersicht'],
+    ]) {
+      const tr = document.createElement('tr');
+      const key = document.createElement('td');
+      const kbd = document.createElement('kbd');
+      kbd.textContent = combo;
+      key.appendChild(kbd);
+      const what = document.createElement('td');
+      what.textContent = action;
+      tr.append(key, what);
+      body.appendChild(tr);
+    }
+    table.appendChild(body);
+    keys.appendChild(table);
+    container.appendChild(keys);
+
+    // --- Sonstiges
+    const misc = this.settingsGroup('🔧 Sonstiges');
+    const archive = this.button('btn-secondary', 'Erledigte entfernen');
+    archive.addEventListener('click', () => {
+      const count = this.store.getTasks().filter((t) => t.done).length;
+      if (!count) { this.showToast('Es gibt nichts zu archivieren.'); return; }
+      if (!confirm(`${count} erledigte ${count === 1 ? 'Aufgabe' : 'Aufgaben'} entfernen?`)) return;
+      this.store.clearCompleted();
+      this.showToast(`${count} erledigte ${count === 1 ? 'Aufgabe' : 'Aufgaben'} entfernt`);
+    });
+    this.settingsRow(misc, 'Erledigte Aufgaben aufräumen', archive,
+      'Entfernt abgehakte Aufgaben endgültig.');
+
+    const about = document.createElement('span');
+    about.className = 'setting-hint';
+    about.textContent = `Organizer · Datenstand v${SCHEMA_VERSION}`;
+    this.settingsRow(misc, 'Über', about,
+      'Alle Aufgaben liegen lokal in diesem Browser. Schuldaten liegen in deinem eigenen Cloudflare-Konto.');
+    container.appendChild(misc);
+  }
+
+  schoolStatus() {
+    const state = this.schoolState ? this.schoolState() : null;
+    if (!state || state.mode !== 'ready') {
+      return {
+        ok: false,
+        label: '⚪ Nicht verbunden',
+        hint: 'Melde dich im Schul-Bereich unten an, um zu synchronisieren.',
+      };
+    }
+    const last = state.lastSync ? new Date(state.lastSync).toLocaleString('de-DE') : 'noch nie';
+    return { ok: true, label: '🟢 Verbunden', hint: `Letzte Synchronisierung: ${last}` };
+  }
+
+  syncSchool() {
+    if (this.schoolSync) this.schoolSync();
+  }
+
+  // -- backup ------------------------------------------------------------
+  createBackup() {
+    try {
+      localStorage.setItem('organizer.backup.v1', this.store.exportJSON());
+      this.prefs.set('backupAt', new Date().toISOString());
+      this.showToast('Backup erstellt');
+      this.render();
+    } catch {
+      this.showToast('Backup fehlgeschlagen — kein Speicherplatz.');
+    }
+  }
+
+  restoreBackup() {
+    let backup = null;
+    try {
+      backup = localStorage.getItem('organizer.backup.v1');
+    } catch { /* storage unavailable */ }
+    if (!backup) { this.showToast('Es gibt noch keine Sicherung.'); return; }
+    if (!confirm('Backup wiederherstellen? Der aktuelle Stand wird ersetzt.')) return;
+
+    // Keep the replaced state so a mistaken restore is not the end of it.
+    const previous = this.store.exportJSON();
+    this.store.importJSON(backup, 'replace');
+    this.render();
+    this.showToast('Backup wiederhergestellt', () => {
+      this.store.importJSON(previous, 'replace');
+      this.render();
+      this.announce('Wiederherstellung rückgängig gemacht');
+    });
+  }
+
+  wipeEverything() {
+    if (!confirm('Wirklich ALLE Aufgaben und Projekte löschen? Das lässt sich nur über ein Backup rückgängig machen.')) return;
+    if (!confirm('Letzte Warnung: alles wird gelöscht. Fortfahren?')) return;
+    const previous = this.store.exportJSON();
+    this.store.importJSON('{"tasks":[],"projects":[]}', 'replace');
+    this.render();
+    this.showToast('Alle Daten gelöscht', () => {
+      this.store.importJSON(previous, 'replace');
+      this.render();
+      this.announce('Löschen rückgängig gemacht');
+    });
   }
 
   taskElement(task, today) {

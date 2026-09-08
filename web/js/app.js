@@ -2,7 +2,7 @@
  * Entry point: restore preferences, bootstrap the store, wire up the UI.
  */
 import { Store } from './store.js';
-import { UI } from './ui.js';
+import { UI, applyAccent } from './ui.js';
 import { School } from './school.js';
 
 const PREFS_KEY = 'organizer.prefs.v1';
@@ -27,8 +27,16 @@ const prefs = {
   },
 };
 
-// Apply the saved theme before first paint to avoid a flash of the wrong one.
+// Everything visual is applied before first paint, so the app never appears in
+// one style and then snaps into another.
 if (prefs.get('theme')) document.documentElement.dataset.theme = prefs.get('theme');
+applyAccent(prefs.get('accent'));
+if (prefs.get('compact')) document.body.classList.add('is-compact');
+if (prefs.get('animations') === false) document.body.classList.add('no-animations');
+
+// The chosen start view wins on a fresh load; after that the last view sticks.
+const startView = prefs.get('startView');
+if (startView && startView !== 'last') prefs.set('view', startView);
 
 const store = new Store();
 const ui = new UI(store, prefs);
@@ -68,6 +76,11 @@ const school = new School(document.getElementById('school-panel'), (msg) => ui.a
 // and the day plan shows tasks only.
 ui.lessonsForDay = (iso) =>
   ((school.state && school.state.lessons) || []).filter((lesson) => lesson.date === iso);
+
+// Connection state and the sync action for the settings panel, same one-way
+// arrangement — the settings page degrades to "not connected" without a backend.
+ui.schoolState = () => ({ mode: school.mode, lastSync: school.state && school.state.lastSync });
+ui.schoolSync = () => school.sync();
 
 // School entries for the command palette, same one-way arrangement.
 ui.extraCommands = () => {
