@@ -78,6 +78,29 @@
   </main>
 </div>
 
+<dialog id="palette" class="palette" aria-label="Befehle">
+  <input id="palette-input" class="palette-input" type="text" role="combobox"
+    aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
+    placeholder="Springen oder Aktion ausführen…" autocomplete="off">
+  <ul id="palette-list" class="palette-list" role="listbox" aria-label="Treffer"></ul>
+  <p class="palette-hint">↑ ↓ zum Wählen · ⏎ zum Ausführen · Esc schließt</p>
+</dialog>
+
+<dialog id="shortcuts" class="sheet" aria-label="Tastenkürzel">
+  <h2>Tastenkürzel</h2>
+  <table class="shortcut-table">
+    <tbody>
+      <tr><td><kbd>N</kbd></td><td>Neue Aufgabe</td></tr>
+      <tr><td><kbd>/</kbd></td><td>Suche</td></tr>
+      <tr><td><kbd>⌘</kbd>/<kbd>Strg</kbd> + <kbd>K</kbd></td><td>Befehle</td></tr>
+      <tr><td><kbd>⌘</kbd>/<kbd>Strg</kbd> + <kbd>⏎</kbd></td><td>Speichern</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Schließen / Abbrechen</td></tr>
+      <tr><td><kbd>?</kbd></td><td>Diese Übersicht</td></tr>
+    </tbody>
+  </table>
+  <button class="primary-btn" type="button" data-close-sheet>Schließen</button>
+</dialog>
+
 <div id="toast" class="toast" hidden>
   <span id="toast-text"></span>
   <button id="toast-action" class="link-btn" type="button">Rückgängig</button>

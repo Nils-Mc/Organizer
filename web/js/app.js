@@ -69,6 +69,38 @@ const school = new School(document.getElementById('school-panel'), (msg) => ui.a
 ui.lessonsForDay = (iso) =>
   ((school.state && school.state.lessons) || []).filter((lesson) => lesson.date === iso);
 
+// School entries for the command palette, same one-way arrangement.
+ui.extraCommands = () => {
+  if (school.mode !== 'ready') return [];
+  const go = (view) => () => {
+    school.view = view;
+    school.activeSubject = null;
+    school.render();
+    school.root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const commands = [
+    { label: 'Stundenplan', group: 'Schule', run: go('timetable') },
+    { label: 'Fächer', group: 'Schule', run: go('subjects') },
+    { label: 'Karteikarten', group: 'Schule', run: go('review') },
+    { label: 'WebUntis synchronisieren', group: 'Schule', run: () => school.sync() },
+  ];
+  for (const subject of (school.state && school.state.subjects) || []) {
+    commands.push({
+      label: subject.long_name || subject.name,
+      group: 'Fach',
+      run: () => {
+        school.view = 'subjects';
+        school.activeSubject = subject;
+        school.subjectData = null;
+        school.render();
+        school.loadSubject(subject.id);
+        school.root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+    });
+  }
+  return commands;
+};
+
 school.init()
   .then(() => ui.render())
   .catch(() => { /* no backend — the task app is unaffected */ });

@@ -17,6 +17,37 @@ const VIEWS = [
 
 const el = (id) => document.getElementById(id);
 
+/**
+ * Score a command against a typed query using subsequence matching: the typed
+ * characters must appear in order but need not be adjacent, so "hut" finds
+ * "Heute" and "erle" finds "Erledigt". Contiguous runs and matches at a word
+ * start score higher, which is what makes short queries land on the obvious
+ * command rather than an incidental one.
+ *
+ * Returns -1 when the query does not fit at all.
+ */
+export function commandScore(query, text) {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const t = text.toLowerCase();
+
+  let score = 0;
+  let from = 0;
+  let previous = -2;
+  for (const char of q) {
+    const at = t.indexOf(char, from);
+    if (at === -1) return -1;
+    if (at === previous + 1) score += 3;            // contiguous
+    if (at === 0 || /[\s·—-]/.test(t[at - 1])) score += 2; // start of a word
+    score += 1;
+    previous = at;
+    from = at + 1;
+  }
+  // Shorter targets win ties: an exact-ish hit beats a long string that merely
+  // happens to contain the letters.
+  return score * 100 - t.length;
+}
+
 export class UI {
   constructor(store, prefs) {
     this.store = store;
@@ -48,7 +79,17 @@ export class UI {
       toastText: el('toast-text'),
       toastAction: el('toast-action'),
       live: el('live-region'),
+      palette: el('palette'),
+      paletteInput: el('palette-input'),
+      paletteList: el('palette-list'),
+      shortcuts: el('shortcuts'),
     };
+
+    // Extra palette entries contributed by the school panel, injected by
+    // app.js for the same reason as lessonsForDay: no import, no hard
+    // dependency on a backend being there.
+    this.extraCommands = () => [];
+    this.paletteIndex = 0;
 
     this.bind();
   }
@@ -202,11 +243,52 @@ export class UI {
 
     d.toastAction.addEventListener('click', () => this.performUndo());
 
+    d.paletteInput.addEventListener('input', () => this.renderPalette());
+    d.paletteInput.addEventListener('keydown', (e) => this.onPaletteKeydown(e));
+    d.paletteList.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-command]');
+      if (row) this.runCommand(Number(row.dataset.command));
+    });
+    // Clicking the backdrop, which is the dialog element itself outside its
+    // content box, closes the palette.
+    d.palette.addEventListener('click', (e) => {
+      if (e.target === d.palette) d.palette.close();
+    });
+    for (const button of document.querySelectorAll('[data-close-sheet]')) {
+      button.addEventListener('click', (e) => e.target.closest('dialog').close());
+    }
+
     document.addEventListener('keydown', (e) => this.onKeydown(e));
   }
 
   onKeydown(event) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName);
+    const meta = event.metaKey || event.ctrlKey;
+
+    // Command palette — deliberately ahead of the modifier guard below, which
+    // otherwise swallows every combination.
+    if (meta && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      this.openPalette();
+      return;
+    }
+
+    // Ctrl/Cmd+Enter submits whatever is being written.
+    if (meta && event.key === 'Enter') {
+      if (this.editingId) {
+        const input = this.dom.container.querySelector('.edit-input');
+        if (input) {
+          event.preventDefault();
+          this.commitEdit(this.editingId, input.value);
+        }
+        return;
+      }
+      if (this.dom.title.value.trim()) {
+        event.preventDefault();
+        this.dom.form.requestSubmit();
+      }
+      return;
+    }
 
     if (event.key === 'Escape') {
       if (this.editingId) {
@@ -218,7 +300,7 @@ export class UI {
       }
       return;
     }
-    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (typing || meta || event.altKey) return;
 
     if (event.key === 'n') {
       event.preventDefault();
@@ -226,7 +308,117 @@ export class UI {
     } else if (event.key === '/') {
       event.preventDefault();
       this.dom.search.focus();
+    } else if (event.key === '?') {
+      event.preventDefault();
+      this.dom.shortcuts.showModal();
     }
+  }
+
+  // -- command palette ---------------------------------------------------
+  /**
+   * Everything reachable by name. Built fresh on open so it always reflects
+   * the current projects and whatever the school panel currently offers.
+   */
+  commands() {
+    const list = VIEWS.map((view) => ({
+      label: view.label,
+      group: 'Ansicht',
+      run: () => { this.prefs.set('view', view.id); this.render(); },
+    }));
+
+    for (const project of this.store.getProjects()) {
+      list.push({
+        label: project.name,
+        group: 'Projekt',
+        run: () => { this.prefs.set('view', `project:${project.id}`); this.render(); },
+      });
+    }
+
+    list.push(
+      { label: 'Neue Aufgabe', group: 'Aktion', run: () => this.dom.title.focus() },
+      { label: 'Suchen', group: 'Aktion', run: () => this.dom.search.focus() },
+      { label: 'Tastenkürzel anzeigen', group: 'Aktion', run: () => this.dom.shortcuts.showModal() },
+      {
+        label: 'Design umschalten',
+        group: 'Aktion',
+        run: () => el('theme-toggle').click(),
+      },
+      { label: 'Daten exportieren', group: 'Aktion', run: () => this.exportData() },
+    );
+
+    return [...list, ...(this.extraCommands() || [])];
+  }
+
+  openPalette() {
+    this.paletteInput_commands = this.commands();
+    this.dom.paletteInput.value = '';
+    this.paletteIndex = 0;
+    this.renderPalette();
+    if (!this.dom.palette.open) this.dom.palette.showModal();
+    this.dom.paletteInput.focus();
+  }
+
+  renderPalette() {
+    const query = this.dom.paletteInput.value;
+    const scored = (this.paletteInput_commands || [])
+      .map((command, index) => ({ command, index, score: commandScore(query, command.label) }))
+      .filter((hit) => hit.score >= 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+
+    this.paletteHits = scored;
+    if (this.paletteIndex >= scored.length) this.paletteIndex = 0;
+
+    const list = this.dom.paletteList;
+    list.textContent = '';
+
+    if (!scored.length) {
+      const empty = document.createElement('li');
+      empty.className = 'palette-empty';
+      empty.textContent = 'Kein Treffer.';
+      list.appendChild(empty);
+      return;
+    }
+
+    scored.forEach((hit, position) => {
+      const li = document.createElement('li');
+      li.className = `palette-item${position === this.paletteIndex ? ' is-active' : ''}`;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', String(position === this.paletteIndex));
+      li.dataset.command = String(position);
+
+      const label = document.createElement('span');
+      label.textContent = hit.command.label;
+      const group = document.createElement('span');
+      group.className = 'palette-group';
+      group.textContent = hit.command.group;
+
+      li.append(label, group);
+      list.appendChild(li);
+    });
+  }
+
+  onPaletteKeydown(event) {
+    const hits = this.paletteHits || [];
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.paletteIndex = (this.paletteIndex + 1) % Math.max(hits.length, 1);
+      this.renderPalette();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.paletteIndex = (this.paletteIndex - 1 + hits.length) % Math.max(hits.length, 1);
+      this.renderPalette();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      this.runCommand(this.paletteIndex);
+    }
+  }
+
+  runCommand(position) {
+    const hit = (this.paletteHits || [])[position];
+    if (!hit) return;
+    this.dom.palette.close();
+    hit.command.run();
   }
 
   onViewClick(event) {
@@ -262,8 +454,7 @@ export class UI {
     // Timeline lines toggle their task directly.
     const timelineToggle = event.target.closest('[data-toggle]');
     if (timelineToggle) {
-      const task = this.store.toggleTask(timelineToggle.dataset.toggle);
-      if (task) this.announce(`${task.title} ${task.done ? 'erledigt' : 'wieder offen'}`);
+      this.toggleWithUndo(timelineToggle.dataset.toggle);
       return;
     }
 
@@ -274,8 +465,10 @@ export class UI {
     if (event.target.closest('[data-action="delete"]')) {
       const removed = this.store.deleteTask(id);
       if (removed) {
-        this.undo = removed;
-        this.showToast(`"${removed.task.title}" gelöscht`);
+        this.showToast(`„${removed.task.title}" gelöscht`, () => {
+          this.store.restoreTask(removed.task, removed.index);
+          this.announce(`${removed.task.title} wiederhergestellt`);
+        });
         this.announce(`${removed.task.title} gelöscht`);
       }
       return;
@@ -290,10 +483,19 @@ export class UI {
     if (!taskEl) return;
     const id = taskEl.dataset.id;
 
-    if (event.target.matches('input[type="checkbox"]')) {
-      const task = this.store.toggleTask(id);
-      if (task) this.announce(`${task.title} ${task.done ? 'erledigt' : 'wieder offen'}`);
-    }
+    if (event.target.matches('input[type="checkbox"]')) this.toggleWithUndo(id);
+  }
+
+  /** Tick a task off and offer to take it back — the most common misclick. */
+  toggleWithUndo(id) {
+    const task = this.store.toggleTask(id);
+    if (!task) return;
+    const state = task.done ? 'erledigt' : 'wieder offen';
+    this.announce(`${task.title} ${state}`);
+    this.showToast(`„${task.title}" ${state}`, () => {
+      this.store.toggleTask(id);
+      this.announce(`${task.title} zurückgesetzt`);
+    });
   }
 
   startEdit(id) {
@@ -313,11 +515,19 @@ export class UI {
   }
 
   // -- toast -----------------------------------------------------------
-  showToast(text) {
+  /**
+   * @param {string} text
+   * @param {(() => void)|null} undoAction reversal to offer, if there is one.
+   *   Passing nothing shows a plain confirmation with no Undo button, rather
+   *   than a button that would do nothing.
+   */
+  showToast(text, undoAction = null) {
     clearTimeout(this.undoTimer);
+    this.undo = undoAction;
     this.dom.toastText.textContent = text;
+    this.dom.toastAction.hidden = !undoAction;
     this.dom.toast.hidden = false;
-    this.undoTimer = setTimeout(() => this.hideToast(), 8000);
+    this.undoTimer = setTimeout(() => this.hideToast(), undoAction ? 8000 : 3000);
   }
 
   hideToast() {
@@ -326,11 +536,10 @@ export class UI {
   }
 
   performUndo() {
-    if (this.undo) {
-      this.store.restoreTask(this.undo.task, this.undo.index);
-      this.announce(`${this.undo.task.title} wiederhergestellt`);
-    }
+    const action = this.undo;
+    // Cleared before running, so an undo can safely queue its own toast.
     this.hideToast();
+    if (action) action();
   }
 
   // -- import / export ---------------------------------------------------

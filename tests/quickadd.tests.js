@@ -1,5 +1,6 @@
-/** Tests for the quick-add command input parser. */
+/** Tests for the quick-add command input parser and the palette's matching. */
 import { parseQuickAdd } from '../web/js/store.js';
+import { commandScore } from '../web/js/ui.js';
 
 // 2026-09-08 is a Tuesday.
 const TUESDAY = new Date(2026, 8, 8);
@@ -106,5 +107,29 @@ export function runQuickAddTests(report) {
     const r = parseQuickAdd('Plan morgen heute', TUESDAY);
     eq(r.dueDate, '2026-09-09', 'the first date wins');
     eq(r.title, 'Plan heute', 'the second date is left in the title as written');
+  }
+
+  // ---- command palette matching ----------------------------------------------
+  {
+    const best = (query, candidates) => candidates
+      .map((label) => ({ label, score: commandScore(query, label) }))
+      .filter((c) => c.score >= 0)
+      .sort((a, b) => b.score - a.score)[0];
+
+    ok(commandScore('hut', 'Heute') >= 0, 'letters in order match without being adjacent');
+    ok(commandScore('heute', 'Heute') > commandScore('hut', 'Heute'),
+      'a closer match scores higher than a sparse one');
+    eq(commandScore('xyz', 'Heute'), -1, 'letters that are not there do not match');
+    eq(commandScore('', 'Heute'), 0, 'an empty query matches everything equally');
+    ok(commandScore('HEU', 'heute') >= 0, 'matching ignores case');
+
+    eq(best('erle', ['Heute', 'Erledigt', 'Alle offenen']).label, 'Erledigt',
+      'a typed prefix lands on the obvious command');
+    eq(best('ein', ['Eingang', 'Alle offenen', 'Erledigt']).label, 'Eingang',
+      'a word-start match beats an incidental one');
+    eq(best('mathe', ['Mathe Hausaufgaben', 'Mathematik']).label, 'Mathematik',
+      'when two match equally well, the shorter one wins');
+    eq(best('mathe', ['Mathematik', 'Mal etwas anderes hier']).label, 'Mathematik',
+      'contiguous letters beat the same letters scattered across a sentence');
   }
 }

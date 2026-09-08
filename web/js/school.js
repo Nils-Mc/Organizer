@@ -60,6 +60,15 @@ export class School {
     }
   }
 
+  /** Pull fresh data from WebUntis. Shared by the button and the palette. */
+  sync() {
+    return this.run('Synchronisiere', async () => {
+      const result = await api.sync();
+      await this.load();
+      this.announce(`Sync fertig: ${result.lessons.inserted + result.lessons.updated} Stunden aktualisiert`);
+    });
+  }
+
   /** Run an async action, showing progress and surfacing failure as text. */
   async run(label, fn) {
     if (this.busy) return;
@@ -185,11 +194,7 @@ export class School {
 
     const sync = node('button', 'link-btn', 'Jetzt synchronisieren');
     sync.type = 'button';
-    sync.addEventListener('click', () => this.run('Synchronisiere', async () => {
-      const result = await api.sync();
-      await this.load();
-      this.announce(`Sync fertig: ${result.lessons.inserted + result.lessons.updated} Stunden aktualisiert`);
-    }));
+    sync.addEventListener('click', () => this.sync());
     bar.appendChild(sync);
 
     return bar;
