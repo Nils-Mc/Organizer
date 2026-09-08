@@ -397,6 +397,28 @@ export class Store {
     return task;
   }
 
+  /**
+   * Put `draggedId` where `targetId` currently sits and renumber from scratch.
+   *
+   * Renumbering everything rather than nudging neighbours keeps `order` a dense
+   * sequence, so no amount of dragging can drift into ties or gaps that later
+   * make the sort ambiguous.
+   */
+  reorderTask(draggedId, targetId) {
+    if (draggedId === targetId) return false;
+    const ordered = [...this.state.tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const from = ordered.findIndex((t) => t.id === draggedId);
+    const to = ordered.findIndex((t) => t.id === targetId);
+    if (from === -1 || to === -1) return false;
+
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    ordered.forEach((task, index) => { task.order = index; });
+    moved.updatedAt = new Date().toISOString();
+    this.commit();
+    return true;
+  }
+
   clearCompleted() {
     const before = this.state.tasks.length;
     this.state.tasks = this.state.tasks.filter((t) => !t.done);

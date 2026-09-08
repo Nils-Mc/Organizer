@@ -113,6 +113,55 @@ export class UI {
     d.projectList.addEventListener('click', (e) => this.onViewClick(e));
     d.container.addEventListener('click', (e) => this.onTaskClick(e));
     d.container.addEventListener('change', (e) => this.onTaskChange(e));
+
+    // Drag and drop, delegated like every other task interaction. render()
+    // rebuilds the whole container, so nothing may rely on node identity
+    // surviving — only the ids carried in the dataset.
+    d.container.addEventListener('dragstart', (e) => {
+      const row = e.target.closest('.task');
+      if (!row) return;
+      this.draggingId = row.dataset.id;
+      row.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox refuses to start a drag without payload.
+      e.dataTransfer.setData('text/plain', row.dataset.id);
+    });
+
+    d.container.addEventListener('dragover', (e) => {
+      if (!this.draggingId) return;
+      const row = e.target.closest('.task');
+      if (!row || row.dataset.id === this.draggingId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      for (const other of d.container.querySelectorAll('.drop-target')) {
+        other.classList.remove('drop-target');
+      }
+      row.classList.add('drop-target');
+    });
+
+    d.container.addEventListener('drop', (e) => {
+      const row = e.target.closest('.task');
+      if (!this.draggingId || !row) return;
+      e.preventDefault();
+      const moved = this.store.reorderTask(this.draggingId, row.dataset.id);
+      this.draggingId = null;
+      if (!moved) return;
+      // Any other sort rule would immediately overwrite what was just dragged,
+      // so a drop is also a switch to manual ordering.
+      if (d.sort.value !== 'manual') {
+        d.sort.value = 'manual';
+        this.prefs.set('sort', 'manual');
+      }
+      this.announce('Reihenfolge geändert');
+      this.render();
+    });
+
+    d.container.addEventListener('dragend', () => {
+      this.draggingId = null;
+      for (const row of d.container.querySelectorAll('.is-dragging, .drop-target')) {
+        row.classList.remove('is-dragging', 'drop-target');
+      }
+    });
     d.container.addEventListener('dblclick', (e) => {
       const title = e.target.closest('.task-title');
       if (title) this.startEdit(title.closest('.task').dataset.id);
@@ -697,14 +746,6 @@ export class UI {
     const meta = document.createElement('div');
     meta.className = 'task-meta';
 
-    if (task.dueDate) {
-      const due = document.createElement('span');
-      const overdue = !task.done && new Date(task.dueDate) < new Date(toISODate(today));
-      due.className = overdue ? 'overdue' : '';
-      due.textContent = formatDue(task.dueDate, today);
-      meta.appendChild(due);
-    }
-
     const project = task.projectId ? this.store.getProject(task.projectId) : null;
     if (project) {
       const ref = document.createElement('span');
@@ -718,12 +759,6 @@ export class UI {
       meta.appendChild(ref);
     }
 
-    if (task.priority !== 'normal') {
-      const prio = document.createElement('span');
-      prio.textContent = { high: 'hohe Priorität', low: 'niedrige Priorität' }[task.priority] || '';
-      meta.appendChild(prio);
-    }
-
     for (const tag of task.tags) {
       const chip = document.createElement('span');
       chip.className = 'tag';
@@ -733,15 +768,45 @@ export class UI {
 
     if (meta.childNodes.length) body.appendChild(meta);
 
+    // Priority and deadline sit on the right, where the eye can scan a column
+    // of them instead of hunting through each line's metadata.
+    const side = document.createElement('div');
+    side.className = 'task-side';
+
+    if (task.priority !== 'normal') {
+      const prio = document.createElement('span');
+      prio.className = `prio-badge prio-${task.priority}`;
+      prio.textContent = task.priority === 'high' ? 'Hoch' : 'Niedrig';
+      prio.title = task.priority === 'high' ? 'Hohe Priorität' : 'Niedrige Priorität';
+      side.appendChild(prio);
+    }
+
+    if (task.dueDate) {
+      const due = document.createElement('span');
+      const overdue = !task.done && task.dueDate < toISODate(today);
+      due.className = `task-due${overdue ? ' overdue' : ''}`;
+      due.textContent = task.dueTime
+        ? `${formatDue(task.dueDate, today)}, ${task.dueTime}`
+        : formatDue(task.dueDate, today);
+      side.appendChild(due);
+    }
+
     const actions = document.createElement('div');
     actions.className = 'task-actions';
-    const edit = this.button('icon-btn', '✎', { action: 'edit' });
+    const edit = this.button('icon-btn', '✏️', { action: 'edit' });
     edit.setAttribute('aria-label', `"${task.title}" bearbeiten`);
-    const del = this.button('icon-btn', '✕', { action: 'delete' });
+    edit.title = 'Bearbeiten';
+    const del = this.button('icon-btn', '🗑️', { action: 'delete' });
     del.setAttribute('aria-label', `"${task.title}" löschen`);
+    del.title = 'Löschen';
     actions.append(edit, del);
 
-    li.append(checkbox, body, actions);
+    // Dragging is only meaningful once the list is not being reordered by a
+    // sort rule; dropping switches the app to manual sorting so the new
+    // position actually survives the next render.
+    li.draggable = this.editingId !== task.id;
+
+    li.append(checkbox, body, side, actions);
     return li;
   }
 }

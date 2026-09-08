@@ -72,6 +72,35 @@ export function runTests(report) {
     eq(store.getTask(task.id).tags, ['v1', 'urgent'], 'updateTask merges new tags');
   }
 
+  // ---- manual reordering (drag and drop) ------------------------------
+  {
+    const store = new Store(new MemoryStorage());
+    const a = store.addTask({ title: 'A' });
+    const b = store.addTask({ title: 'B' });
+    const c = store.addTask({ title: 'C' });
+    const byOrder = () => [...store.getTasks()]
+      .sort((x, y) => x.order - y.order).map((t) => t.title);
+
+    eq(byOrder(), ['A', 'B', 'C'], 'new tasks start in the order they were added');
+
+    ok(store.reorderTask(c.id, a.id), 'reorderTask reports that it moved something');
+    eq(byOrder(), ['C', 'A', 'B'], 'a task dropped on the first one takes its place');
+
+    store.reorderTask(c.id, b.id);
+    eq(byOrder(), ['A', 'B', 'C'], 'dragging it back to the end restores the order');
+
+    eq(store.getTasks().map((t) => t.order).sort((x, y) => x - y), [0, 1, 2],
+      'order stays a dense sequence, so repeated drags cannot create ties or gaps');
+
+    ok(!store.reorderTask(a.id, a.id), 'dropping a task on itself changes nothing');
+    ok(!store.reorderTask('nope', a.id), 'an unknown id is refused rather than throwing');
+
+    // The order has to survive a save/load round trip, or dragging is pointless.
+    const reloaded = new Store(store.storage);
+    eq([...reloaded.getTasks()].sort((x, y) => x.order - y.order).map((t) => t.title),
+      ['A', 'B', 'C'], 'the dragged order survives a reload');
+  }
+
   // ---- delete / restore / project deletion ---------------------------
   {
     const store = new Store(new MemoryStorage());
