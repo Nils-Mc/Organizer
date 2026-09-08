@@ -11,7 +11,7 @@ import { runSync } from './sync.js';
 import {
   isAuthenticated, createToken, sessionCookie, clearCookie, hashPassword,
 } from './auth.js';
-import { joinTranscripts } from './srs.js';
+import { joinTranscripts, schedule } from './srs.js';
 
 const json = (data, init = {}) =>
   new Response(JSON.stringify(data), {
@@ -78,14 +78,15 @@ async function handleApi(request, env, ctx, url) {
     const from = today();
     const to = new Date();
     to.setDate(to.getDate() + 28);
-    const [subjects, lessons, homework, exams, lastSync] = await Promise.all([
+    const [subjects, lessons, homework, exams, lastSync, flashcardsDue] = await Promise.all([
       db.subjectsWithCounts(),
       db.lessonsBetween(from, to.toISOString().slice(0, 10)),
       db.openHomework(),
       db.upcomingExams(from),
       db.getSyncState('last_sync'),
+      db.countDueFlashcards(from),
     ]);
-    return json({ subjects, lessons, homework, exams, lastSync });
+    return json({ subjects, lessons, homework, exams, lastSync, flashcardsDue });
   }
 
   // ---- sync on demand ----------------------------------------------------
@@ -259,8 +260,41 @@ async function handleApi(request, env, ctx, url) {
     const body = (await readJson(request)) || {};
     if (!body.text) return json({ error: 'Kein Text angegeben.' }, { status: 400 });
     const ai = await import('./ai.js');
-    const cards = await ai.generateFlashcards(env, { text: body.text, subject: body.subject });
+    const generated = await ai.generateFlashcards(env, { text: body.text, subject: body.subject });
+
+    // Persisted only when a subject is known — an ad-hoc summary without a
+    // subjectId has nowhere sensible to live in the review queue.
+    const now = new Date().toISOString();
+    const cards = generated.map((c) => ({
+      id: uid(),
+      subject_id: body.subjectId || null,
+      source_type: body.noteId ? 'note' : null,
+      source_id: body.noteId || null,
+      front: c.front,
+      back: c.back,
+      due_at: today(),
+      interval_days: 0,
+      ease: 2.5,
+      repetitions: 0,
+      lapses: 0,
+      created_at: now,
+    }));
+    if (body.subjectId && cards.length) await db.saveFlashcards(cards);
     return json({ cards });
+  }
+
+  if (path === '/flashcards/due' && method === 'GET') {
+    return json({ cards: await db.dueFlashcards(today()) });
+  }
+
+  const flashcardReview = path.match(/^\/flashcards\/([^/]+)\/review$/);
+  if (flashcardReview && method === 'POST') {
+    const card = await db.getFlashcard(flashcardReview[1]);
+    if (!card) return json({ error: 'Karte nicht gefunden.' }, { status: 404 });
+    const body = (await readJson(request)) || {};
+    const next = schedule(card, body.quality);
+    await db.updateFlashcardSchedule(card.id, next);
+    return json({ card: { ...card, ...next } });
   }
 
   // ---- search ---------------------------------------------------------------

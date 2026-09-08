@@ -88,6 +88,7 @@ export class School {
     if (this.mode === 'login') { this.root.appendChild(this.loginForm()); return; }
 
     this.root.appendChild(this.header());
+    if (this.state) this.root.appendChild(this.statRow());
     if (this.error) {
       const box = node('p', 'school-error', this.error);
       box.setAttribute('role', 'alert');
@@ -97,7 +98,28 @@ export class School {
 
     if (this.view === 'timetable') this.root.appendChild(this.timetable());
     else if (this.view === 'subjects') this.root.appendChild(this.subjects());
+    else if (this.view === 'review') this.root.appendChild(this.review());
     else if (this.view === 'search') this.root.appendChild(this.search());
+  }
+
+  /** Quick counts at a glance: what's open, what's coming up, what's due to review. */
+  statRow() {
+    const row = node('div', 'stat-row');
+    const stats = [
+      ['📝', (this.state.homework || []).length, 'offene Hausaufgaben'],
+      ['📚', (this.state.exams || []).length, 'anstehende Klausuren'],
+      ['🧠', this.state.flashcardsDue || 0, 'fällige Karteikarten'],
+    ];
+    for (const [icon, value, label] of stats) {
+      const card = node('div', 'stat-card');
+      card.appendChild(node('span', 'stat-icon', icon));
+      const body = node('div', 'stat-body');
+      body.appendChild(node('strong', 'stat-value', String(value)));
+      body.appendChild(node('span', 'stat-label', label));
+      card.appendChild(body);
+      row.appendChild(card);
+    }
+    return row;
   }
 
   loginForm() {
@@ -138,15 +160,18 @@ export class School {
     const bar = node('div', 'school-bar');
 
     for (const [id, label] of [
-      ['timetable', 'Stundenplan'], ['subjects', 'Fächer'], ['search', 'Suche'],
+      ['timetable', 'Stundenplan'], ['subjects', 'Fächer'], ['review', 'Karteikarten'], ['search', 'Suche'],
     ]) {
       const button = node('button', 'chip', label);
       button.type = 'button';
       button.setAttribute('aria-current', String(this.view === id));
+      const due = this.state && this.state.flashcardsDue;
+      if (id === 'review' && due) button.appendChild(node('span', 'chip-badge', String(due)));
       button.addEventListener('click', () => {
         this.view = id;
         this.activeSubject = null;
-        this.render();
+        if (id === 'review') this.run('Lade Karten', async () => { await this.loadReviewQueue(); });
+        else this.render();
       });
       bar.appendChild(button);
     }
@@ -444,8 +469,11 @@ export class School {
       cards.addEventListener('click', () => this.run('Erzeuge Lernkarten', async () => {
         const { cards: generated } = await api.generateFlashcards({
           text: `${note.title}\n\n${note.body}`, subject: subject.name,
+          subjectId: subject.id, noteId: note.id,
         });
         this.noteExtras.set(note.id, { ...this.noteExtras.get(note.id), cards: generated });
+        await this.load();
+        this.announce(`${generated.length} Lernkarten erzeugt und zur Wiederholung gespeichert`);
       }));
 
       const remove = node('button', 'link-btn', 'Löschen');
@@ -481,6 +509,73 @@ export class School {
     const [notes, materials] = await Promise.all([api.notes(id), api.materials(id)]);
     this.subjectData = { notes: notes.notes || [], materials: materials.materials || [] };
     await this.load();
+  }
+
+  // ---- flashcard review ---------------------------------------------------
+  async loadReviewQueue() {
+    const { cards } = await api.dueFlashcards();
+    this.reviewQueue = cards;
+    this.reviewIndex = 0;
+    this.reviewFlipped = false;
+  }
+
+  review() {
+    const wrap = node('section', 'school-section review-section');
+    wrap.appendChild(node('h2', null, 'Karteikarten'));
+
+    const queue = this.reviewQueue || [];
+    if (!queue.length) {
+      wrap.appendChild(node('p', 'empty',
+        'Keine Karten fällig. Erzeuge welche aus einer Notiz, oder komm später wieder.'));
+      return wrap;
+    }
+    if (this.reviewIndex >= queue.length) {
+      wrap.appendChild(node('p', 'empty',
+        `Geschafft — ${queue.length} Karte${queue.length === 1 ? '' : 'n'} wiederholt.`));
+      return wrap;
+    }
+
+    const card = queue[this.reviewIndex];
+    wrap.appendChild(node('p', 'muted small',
+      `Karte ${this.reviewIndex + 1} von ${queue.length}` + (card.subject_name ? ` · ${card.subject_name}` : '')));
+
+    const flip = node('button', `flip-card${this.reviewFlipped ? ' is-flipped' : ''}`);
+    flip.type = 'button';
+    if (card.subject_color) flip.style.setProperty('--card-accent', card.subject_color);
+    flip.setAttribute('aria-label', this.reviewFlipped ? 'Frage zeigen' : 'Antwort zeigen');
+
+    const inner = node('div', 'flip-card-inner');
+    const front = node('div', 'flip-card-face flip-card-front');
+    front.appendChild(node('span', null, card.front));
+    const back = node('div', 'flip-card-face flip-card-back');
+    back.appendChild(node('span', null, card.back));
+    inner.append(front, back);
+    flip.appendChild(inner);
+    flip.addEventListener('click', () => { this.reviewFlipped = !this.reviewFlipped; this.render(); });
+    wrap.appendChild(flip);
+
+    if (!this.reviewFlipped) {
+      wrap.appendChild(node('p', 'muted small', 'Karte antippen, um die Antwort zu zeigen.'));
+      return wrap;
+    }
+
+    const grades = node('div', 'review-grades');
+    for (const [quality, label, cls] of [
+      [1, 'Nochmal', 'grade-again'], [3, 'Schwer', 'grade-hard'],
+      [4, 'Gut', 'grade-good'], [5, 'Leicht', 'grade-easy'],
+    ]) {
+      const btn = node('button', `btn-secondary ${cls}`, label);
+      btn.type = 'button';
+      btn.addEventListener('click', () => this.run('Speichere', async () => {
+        await api.reviewFlashcard(card.id, quality);
+        this.reviewIndex += 1;
+        this.reviewFlipped = false;
+        await this.load();
+      }));
+      grades.appendChild(btn);
+    }
+    wrap.appendChild(grades);
+    return wrap;
   }
 
   // ---- search ------------------------------------------------------------

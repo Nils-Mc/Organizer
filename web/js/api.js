@@ -88,6 +88,13 @@ export const api = {
       method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(payload),
     }),
 
+  dueFlashcards: () => request('/flashcards/due'),
+
+  reviewFlashcard: (id, quality) =>
+    request(`/flashcards/${encodeURIComponent(id)}/review`, {
+      method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ quality }),
+    }),
+
   search: (query) => request(`/search?q=${encodeURIComponent(query)}`),
 };
 

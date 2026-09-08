@@ -144,6 +144,37 @@ export function createDb(D1) {
       `SELECT * FROM summaries WHERE target_type = ? AND target_id = ?
         ORDER BY created_at DESC`, targetType, targetId),
 
+    // -- flashcards --------------------------------------------------------
+    saveFlashcards: (cards) => {
+      if (!cards.length) return Promise.resolve();
+      return D1.batch(cards.map((c) => D1.prepare(
+        `INSERT INTO flashcards
+           (id, subject_id, source_type, source_id, front, back,
+            due_at, interval_days, ease, repetitions, lapses, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(c.id, c.subject_id, c.source_type ?? null, c.source_id ?? null, c.front, c.back,
+             c.due_at, c.interval_days ?? 0, c.ease ?? 2.5, c.repetitions ?? 0, c.lapses ?? 0,
+             c.created_at)));
+    },
+
+    dueFlashcards: (before, limit = 30) => all(
+      `SELECT f.*, s.name AS subject_name, s.color AS subject_color
+         FROM flashcards f LEFT JOIN subjects s ON s.id = f.subject_id
+        WHERE f.due_at <= ? ORDER BY f.due_at LIMIT ?`, before, limit),
+
+    countDueFlashcards: async (before) => {
+      const row = await D1.prepare('SELECT COUNT(*) AS n FROM flashcards WHERE due_at <= ?')
+        .bind(before).first();
+      return row ? row.n : 0;
+    },
+
+    getFlashcard: (id) => D1.prepare('SELECT * FROM flashcards WHERE id = ?').bind(id).first(),
+
+    updateFlashcardSchedule: (id, s) =>
+      D1.prepare(`UPDATE flashcards SET due_at = ?, interval_days = ?, ease = ?,
+                    repetitions = ?, lapses = ? WHERE id = ?`)
+        .bind(s.due_at, s.interval_days, s.ease, s.repetitions, s.lapses, id).run(),
+
     // -- search ----------------------------------------------------------
     indexDocument: async ({ refId, kind, subjectId, title, body }) => {
       await D1.prepare('DELETE FROM search_fts WHERE ref_id = ?').bind(refId).run();
