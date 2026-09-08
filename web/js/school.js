@@ -256,7 +256,7 @@ export class School {
 
       for (const lesson of day.lessons) {
         const card = node('div', `lesson ${lesson.status}`);
-        if (lesson.subject_color) card.style.borderLeftColor = lesson.subject_color;
+        if (lesson.subject_color) card.style.setProperty('--card-accent', lesson.subject_color);
 
         card.appendChild(node('strong', null, lesson.subject_name || '—'));
         card.appendChild(node('span', 'muted small', `${lesson.start_time}–${lesson.end_time}`));
@@ -342,7 +342,7 @@ export class School {
     for (const subject of subjects) {
       const card = node('button', 'subject-card');
       card.type = 'button';
-      if (subject.color) card.style.borderLeftColor = subject.color;
+      if (subject.color) card.style.setProperty('--card-accent', subject.color);
       card.appendChild(node('strong', null, subject.long_name || subject.name));
       card.appendChild(node('span', 'muted small',
         `${subject.note_count || 0} Notizen · ${subject.material_count || 0} Dateien` +
