@@ -1,1 +1,150 @@
 # Organizer
+
+Ein Schul-Organizer: WebUntis synchronisiert sich automatisch, und unter jedem
+Fach lassen sich Notizen, Audio-Aufnahmen und Dokumente ablegen — mit
+KI-Zusammenfassungen, Lernkarten und Suche über alles.
+
+Läuft als Cloudflare Worker. Das Frontend bleibt abhängigkeitsfreies HTML, CSS
+und ES-Module; der Worker hält alles, was Zugangsdaten braucht.
+
+**Live:** https://organizer.nils-1132.workers.dev — deployt, aber noch ohne
+Zugangsdaten. Anmelden geht erst nach `npm run setup` (siehe unten).
+
+## Warum ein Server nötig ist
+
+Die erste Fassung war eine reine Browser-App. Das geht hier nicht mehr, aus zwei
+Gründen:
+
+1. **WebUntis sendet keine CORS-Header.** Ein `fetch` aus dem Browser wird
+   blockiert — auch der offizielle JS-Client zielt ausdrücklich auf Node.
+2. **WebUntis-Zugangsdaten gehören nicht ins Frontend.**
+
+Beides landet deshalb im Worker.
+
+## Aufbau
+
+```
+web/                  Frontend (abhängigkeitsfrei)
+  index.html
+  css/styles.css
+  js/{store,filters,ui,app}.js   Aufgaben-Teil, offline
+  js/{api,school,schedule}.js    Schul-Teil gegen den Worker
+worker/
+  schema.sql          D1-Schema
+  src/index.js        Router, Cron-Sync, Transkriptions-Queue
+  src/auth.js         Single-User-Login, signiertes Cookie
+  src/untis.js        WebUntis JSON-RPC + REST (fetch injizierbar)
+  src/sync.js         Reconciliation (rein, ohne DB)
+  src/db.js           D1-Adapter
+  src/ai.js           Workers AI: Whisper + Textmodell (kostenlos, kein API-Key)
+  src/srs.js          SM-2 und Transkript-Zusammenführung (rein)
+tests/                Unit-Tests, headless und im Browser
+```
+
+Der Zuschnitt folgt einer Regel: **Entscheidungen sind rein, Seiteneffekte sind
+dünn.** `sync.js`, `srs.js` und die Normalisierung in `untis.js` enthalten die
+eigentliche Logik und kennen weder Datenbank noch Netzwerk — deshalb sind sie
+ohne Cloudflare testbar. `db.js` und `index.js` sind bewusst dumm.
+
+## Features
+
+- **WebUntis-Sync** alle 30 Minuten während der Schulzeit: Fächer, Stundenplan,
+  Hausaufgaben, Klausuren. Entfall und Vertretung werden erkannt und markiert.
+- **Pro Fach**: Notizen (Markdown), Audio-Aufnahmen, Dokumente.
+- **Transkription** von Aufnahmen über Workers AI (Whisper). Lange Aufnahmen
+  werden in Stücke geteilt, parallel transkribiert und nach Index wieder
+  zusammengesetzt.
+- **Zusammenfassungen** über Workers AI (Mistral Small 3.1). PDFs und andere
+  Dokumente laufen zuerst durch Workers AI's eigene `toMarkdown`-Konvertierung.
+- **Lernkarten** mit SM-2-Wiederholung, per Structured Outputs erzeugt.
+- **Suche** über Notizen, Transkripte und Zusammenfassungen (FTS5).
+- Der bestehende Aufgaben-Teil bleibt: Today/Upcoming, Prioritäten, `#tags`,
+  Undo, Hell/Dunkel, Offline-Betrieb.
+
+### Was ein Sync nie anfasst
+
+Alles aus Untis trägt seine `untis_id` und wird per Upsert abgeglichen. Ein
+zweiter Sync ändert deshalb nichts. Vor allem: **eine lokal abgehakte Hausaufgabe
+bleibt abgehakt**, auch wenn Untis sie weiter als offen meldet. Notizen,
+Aufnahmen und Zusammenfassungen haben keine Untis-Id und werden nie überschrieben.
+
+## Stand der Einrichtung
+
+Die D1-Datenbank ist bereits angelegt und das Schema eingespielt — ihre ID
+steht in `wrangler.toml`. **R2 und Queues fehlen noch:** R2 ist für den Account
+nicht freigeschaltet, Queues brauchen den Workers-Paid-Plan. Beide Bindings sind
+deshalb in `wrangler.toml` auskommentiert, damit der Worker heute deployt und
+läuft. Ohne sie funktionieren Sync, Fächer, Notizen, Hausaufgaben, Klausuren und
+Suche vollständig; nur der Datei-Upload antwortet mit einer klaren Meldung statt
+zu arbeiten. Die vier Schritte zum Nachrüsten stehen als Kommentar in
+`wrangler.toml`.
+
+```sh
+npm install
+npm run db:init      # nur nötig, wenn du eine eigene Datenbank anlegst
+```
+
+`UNTIS_HOST` und `UNTIS_SCHOOL` stehen als `vars` in `wrangler.toml` (Host und
+Schulkürzel aus der Untis-URL).
+
+### Secrets und Deploy — der einfache Weg
+
+```sh
+npm run setup
+```
+
+Führt einmal durch: Cloudflare-Login (öffnet den Browser), die WebUntis-Secrets,
+ein selbstgewähltes App-Login-Passwort (berechnet `PASSWORD_SALT`/`PASSWORD_HASH`
+automatisch — von Hand ist das eine leicht zu verwechselnde Fehlerquelle, weil
+ein falsches Paar einfach zu "kann mich nicht anmelden" ohne Fehlermeldung
+führt), ein zufälliges `SESSION_SECRET`, dann `wrangler deploy`. Kein API-Key
+für die KI-Features nötig — die laufen auf Workers AI, das ist schon über den
+`AI`-Binding vorhanden. Jeder Wert wird direkt bei Cloudflare gespeichert —
+nichts davon landet in einer Datei oder im Terminal-Log.
+
+### Von Hand
+
+```sh
+npx wrangler login
+npx wrangler secret put UNTIS_USER
+npx wrangler secret put UNTIS_PASSWORD
+npx wrangler secret put SESSION_SECRET     # lange Zufallszeichenkette
+npx wrangler secret put PASSWORD_SALT
+npx wrangler secret put PASSWORD_HASH      # SHA-256 von "<salt>:<passwort>", siehe worker/src/auth.js
+```
+
+```sh
+npm run dev      # lokal, http://localhost:8787
+npm run deploy   # veröffentlichen
+```
+
+Für den Deploy aus GitHub Actions: `CLOUDFLARE_API_TOKEN` und
+`CLOUDFLARE_ACCOUNT_ID` als Repository-Secrets. Fehlen sie, überspringt der
+Workflow den Deploy mit einem Hinweis, statt rot zu werden.
+
+**Kosten:** Sync, Fächer, Notizen, Zusammenfassungen, Lernkarten und
+Transkription laufen komplett im kostenlosen Workers-Kontingent (10.000
+Neuronen/Tag auf Workers AI, reicht für gut hundert Zusammenfassungen täglich).
+Nur Queues (für die Hintergrund-Transkription vieler Audiostücke) und Vectorize
+(semantische Suche) brauchen den Workers-Paid-Plan (~5 $/Monat) — beide sind
+aktuell auskommentiert und optional, siehe oben.
+
+## Tests
+
+```sh
+npm test          # oder: node tests/run.js
+```
+
+Oder `tests/test.html` im Browser für denselben Umfang mit sichtbarem Bericht.
+
+Abgedeckt sind unter anderem: WebUntis-Datums- und Zeitkodierung (`830` = 08:30),
+Session- und Cookie-Handling gegen einen Fetch-Stub, Erkennung von Entfall und
+Vertretung, Idempotenz des Syncs, das Überleben lokaler Änderungen, Ablauf und
+Fälschung von Session-Tokens, SM-2-Intervalle samt Ease-Untergrenze und die
+Zusammenführung von Transkript-Stücken.
+
+## Datenformat
+
+Der Aufgaben-Teil im Browser nutzt weiterhin `organizer.v1` in `localStorage`
+und lässt sich als JSON exportieren und importieren. Importe werden feldweise
+validiert; defekte Datensätze werden verworfen statt übernommen.

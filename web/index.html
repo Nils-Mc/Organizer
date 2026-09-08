@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organizer</title>
+<link rel="stylesheet" href="css/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128203;</text></svg>">
+</head>
+<body>
+<a class="skip-link" href="#main">Zu den Aufgaben springen</a>
+
+<header class="topbar">
+  <button id="menu-toggle" class="icon-btn" aria-label="Seitenleiste umschalten" aria-expanded="false">&#9776;</button>
+  <h1 class="brand">Organizer</h1>
+  <div class="search-wrap">
+    <input id="search" type="search" placeholder="Aufgaben suchen…  ( / )" aria-label="Aufgaben suchen" autocomplete="off">
+  </div>
+  <label class="sort-wrap">
+    <span class="visually-hidden">Sortieren nach</span>
+    <select id="sort" aria-label="Aufgaben sortieren nach">
+      <option value="due">Fälligkeit</option>
+      <option value="priority">Priorität</option>
+      <option value="created">Neueste</option>
+      <option value="title">Titel</option>
+      <option value="manual">Manuell</option>
+    </select>
+  </label>
+  <button id="theme-toggle" class="icon-btn" aria-label="Farbschema umschalten" title="Farbschema umschalten">&#9788;</button>
+</header>
+
+<div class="layout school-layout">
+  <section id="school-panel" class="school-panel" aria-label="Schul-Bereich" hidden></section>
+</div>
+
+<div class="layout">
+  <nav id="sidebar" class="sidebar" aria-label="Ansichten und Projekte">
+    <button id="sidebar-collapse" class="icon-btn sidebar-collapse-btn" type="button"
+      aria-label="Seitenleiste einklappen" aria-expanded="true" title="Seitenleiste einklappen">‹</button>
+
+    <h2 class="side-heading">Ansichten</h2>
+    <ul id="view-list" class="side-list"></ul>
+
+    <h2 class="side-heading">
+      <span class="label">Projekte</span>
+      <button id="add-project" class="link-btn" type="button" title="Neues Projekt">+ Neu</button>
+    </h2>
+    <ul id="project-list" class="side-list"></ul>
+
+    <input id="import-file" type="file" accept="application/json,.json" hidden>
+  </nav>
+
+  <main id="main" class="main">
+    <div class="main-head">
+      <h2 id="view-title">Heute</h2>
+      <p id="view-summary" class="view-summary"></p>
+    </div>
+
+    <form id="new-task-form" class="new-task" autocomplete="off">
+      <input id="new-task-title" type="text" placeholder="Mathe lernen morgen 18:00 #schule !hoch   ( n )" aria-label="Titel der neuen Aufgabe" required>
+      <input id="new-task-due" type="date" aria-label="Fälligkeitsdatum">
+      <input id="new-task-time" type="time" aria-label="Uhrzeit" title="Uhrzeit (optional)">
+      <select id="new-task-priority" aria-label="Priorität">
+        <option value="low">Niedrig</option>
+        <option value="normal" selected>Normal</option>
+        <option value="high">Hoch</option>
+      </select>
+      <select id="new-task-project" aria-label="Projekt"></select>
+      <button type="submit" class="primary-btn">Hinzufügen</button>
+    </form>
+
+    <div id="task-container" class="task-container"></div>
+  </main>
+</div>
+
+<dialog id="palette" class="palette" aria-label="Befehle">
+  <input id="palette-input" class="palette-input" type="text" role="combobox"
+    aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
+    placeholder="Springen oder Aktion ausführen…" autocomplete="off">
+  <ul id="palette-list" class="palette-list" role="listbox" aria-label="Treffer"></ul>
+  <p class="palette-hint">↑ ↓ zum Wählen · ⏎ zum Ausführen · Esc schließt</p>
+</dialog>
+
+<dialog id="shortcuts" class="sheet" aria-label="Tastenkürzel">
+  <h2>Tastenkürzel</h2>
+  <table class="shortcut-table">
+    <tbody>
+      <tr><td><kbd>N</kbd></td><td>Neue Aufgabe</td></tr>
+      <tr><td><kbd>/</kbd></td><td>Suche</td></tr>
+      <tr><td><kbd>⌘</kbd>/<kbd>Strg</kbd> + <kbd>K</kbd></td><td>Befehle</td></tr>
+      <tr><td><kbd>⌘</kbd>/<kbd>Strg</kbd> + <kbd>⏎</kbd></td><td>Speichern</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Schließen / Abbrechen</td></tr>
+      <tr><td><kbd>?</kbd></td><td>Diese Übersicht</td></tr>
+    </tbody>
+  </table>
+  <button class="primary-btn" type="button" data-close-sheet>Schließen</button>
+</dialog>
+
+<div id="toast" class="toast" hidden>
+  <span id="toast-text"></span>
+  <button id="toast-action" class="link-btn" type="button">Rückgängig</button>
+</div>
+
+<div id="live-region" class="visually-hidden" role="status" aria-live="polite"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

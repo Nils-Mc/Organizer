@@ -1,0 +1,17 @@
+{
+  "name": "organizer",
+  "private": true,
+  "type": "module",
+  "description": "Schul-Organizer: WebUntis-Sync, Fach-Notizen, Audio und KI-Zusammenfassungen",
+  "scripts": {
+    "test": "node tests/run.js",
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "setup": "bash scripts/setup-and-deploy.sh",
+    "db:init": "wrangler d1 execute organizer --local --file=worker/schema.sql",
+    "db:init:remote": "wrangler d1 execute organizer --remote --file=worker/schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
