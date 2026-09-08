@@ -201,9 +201,8 @@ button:active { transform: scale(.98); }
 
 /* ---- layout ---------------------------------------------------------- */
 .layout {
-  display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  align-items: start;
+  display: flex;
+  align-items: flex-start;
   gap: 18px;
   max-width: 1180px;
   margin: 0 auto;
@@ -211,10 +210,14 @@ button:active { transform: scale(.98); }
 }
 
 /* ---- sidebar: floating glass panel -------------------------------------
-   Notion's plain-text nav rhythm, on a frosted panel instead of a flat one. */
+   Notion's plain-text nav rhythm, on a frosted panel instead of a flat one.
+   A plain width (not a grid column) so it can transition smoothly between
+   its full width and the collapsed icon-rail width. */
 .sidebar {
   position: sticky;
   top: 78px;
+  flex: 0 0 var(--sidebar-w);
+  width: var(--sidebar-w);
   background: var(--grain), var(--glass-bg);
   background-blend-mode: overlay, normal;
   backdrop-filter: blur(28px) saturate(2.1);
@@ -223,7 +226,49 @@ button:active { transform: scale(.98); }
   border-radius: var(--radius-lg);
   padding: 12px;
   box-shadow: var(--shadow), var(--glass-highlight);
+  transition: flex-basis .25s var(--ease), width .25s var(--ease);
+  overflow: hidden;
 }
+
+.sidebar.collapsed {
+  flex-basis: 60px;
+  width: 60px;
+  padding: 12px 8px;
+}
+
+.sidebar-collapse-btn {
+  display: block;
+  margin: 0 auto 10px;
+  transition: transform .2s var(--ease);
+}
+.sidebar.collapsed .sidebar-collapse-btn { transform: rotate(180deg); }
+
+/* Text fades and collapses to zero width; icons/dots stay centered. */
+.sidebar.collapsed .side-heading .label,
+.sidebar.collapsed .side-item .label,
+.sidebar.collapsed .side-item .count,
+.sidebar.collapsed .side-actions .label,
+.sidebar.collapsed .project-row .row-actions,
+.sidebar.collapsed .side-heading .link-btn {
+  flex: 0 0 0;
+  width: 0;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.sidebar.collapsed .side-heading {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.sidebar.collapsed .side-item,
+.sidebar.collapsed .side-actions .link-btn {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.sidebar.collapsed .side-actions { align-items: center; }
 
 .side-heading {
   display: flex;
@@ -258,6 +303,12 @@ button:active { transform: scale(.98); }
 .side-item[aria-current="true"] {
   background: color-mix(in srgb, var(--text) 8%, transparent);
   font-weight: 600;
+}
+
+.side-item .icon {
+  flex: none;
+  width: 18px;
+  text-align: center;
 }
 
 .side-item .label {
@@ -488,10 +539,11 @@ button:active { transform: scale(.98); }
 
 /* ---- responsive ------------------------------------------------------ */
 @media (max-width: 760px) {
-  .layout { grid-template-columns: minmax(0, 1fr); }
+  .layout { flex-direction: column; }
   #menu-toggle { display: block; }
-  .sidebar { position: static; display: none; }
+  .sidebar { position: static; display: none; width: auto; }
   .sidebar.open { display: block; }
+  .sidebar-collapse-btn { display: none; }
   .brand { display: none; }
   .sort-wrap { display: none; }
 }

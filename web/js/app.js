@@ -33,6 +33,16 @@ if (prefs.get('theme')) document.documentElement.dataset.theme = prefs.get('them
 const store = new Store();
 const ui = new UI(store, prefs);
 
+// Same reasoning as the theme: apply before first paint, not after, so the
+// sidebar doesn't visibly snap from wide to collapsed on load.
+if (prefs.get('sidebarCollapsed')) {
+  ui.dom.sidebar.classList.add('collapsed');
+  const toggle = document.getElementById('sidebar-collapse');
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.title = 'Seitenleiste ausklappen';
+  toggle.setAttribute('aria-label', toggle.title);
+}
+
 if (prefs.get('sort')) ui.dom.sort.value = prefs.get('sort');
 
 store.subscribe(() => ui.render());

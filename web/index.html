@@ -34,19 +34,22 @@
 
 <div class="layout">
   <nav id="sidebar" class="sidebar" aria-label="Ansichten und Projekte">
+    <button id="sidebar-collapse" class="icon-btn sidebar-collapse-btn" type="button"
+      aria-label="Seitenleiste einklappen" aria-expanded="true" title="Seitenleiste einklappen">‹</button>
+
     <h2 class="side-heading">Ansichten</h2>
     <ul id="view-list" class="side-list"></ul>
 
     <h2 class="side-heading">
-      Projekte
-      <button id="add-project" class="link-btn" type="button">+ Neu</button>
+      <span class="label">Projekte</span>
+      <button id="add-project" class="link-btn" type="button" title="Neues Projekt">+ Neu</button>
     </h2>
     <ul id="project-list" class="side-list"></ul>
 
-    <h2 class="side-heading">Daten</h2>
+    <h2 class="side-heading"><span class="label">Daten</span></h2>
     <div class="side-actions">
-      <button id="export-btn" class="link-btn" type="button">JSON exportieren</button>
-      <button id="import-btn" class="link-btn" type="button">JSON importieren</button>
+      <button id="export-btn" class="link-btn" type="button" title="JSON exportieren">↓ <span class="label">JSON exportieren</span></button>
+      <button id="import-btn" class="link-btn" type="button" title="JSON importieren">↑ <span class="label">JSON importieren</span></button>
       <input id="import-file" type="file" accept="application/json,.json" hidden>
     </div>
   </nav>

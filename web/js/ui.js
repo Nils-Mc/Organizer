@@ -122,6 +122,14 @@ export class UI {
       e.currentTarget.setAttribute('aria-expanded', String(open));
     });
 
+    el('sidebar-collapse').addEventListener('click', (e) => {
+      const collapsed = d.sidebar.classList.toggle('collapsed');
+      e.currentTarget.setAttribute('aria-expanded', String(!collapsed));
+      e.currentTarget.title = collapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen';
+      e.currentTarget.setAttribute('aria-label', e.currentTarget.title);
+      this.prefs.set('sidebarCollapsed', collapsed);
+    });
+
     el('theme-toggle').addEventListener('click', () => {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
@@ -339,8 +347,10 @@ export class UI {
       const li = document.createElement('li');
       const btn = this.button('side-item', '', { view: view.id });
       btn.setAttribute('aria-current', String(view.id === activeView));
+      btn.title = view.label;
 
       const icon = document.createElement('span');
+      icon.className = 'icon';
       icon.textContent = view.icon;
       icon.setAttribute('aria-hidden', 'true');
 
@@ -372,6 +382,7 @@ export class UI {
 
       const btn = this.button('side-item', '', { view: `project:${project.id}` });
       btn.setAttribute('aria-current', String(`project:${project.id}` === activeView));
+      btn.title = project.name;
 
       const dot = document.createElement('span');
       dot.className = 'dot';
